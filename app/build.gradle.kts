@@ -84,8 +84,9 @@ dependencies {
     // Coil for image loading
     implementation("io.coil-kt:coil-compose:2.5.0")
     
-    // ZXing for QR code generation
+    // ZXing for QR code generation and scanning
     implementation("com.google.zxing:core:3.5.2")
+    implementation("com.journeyapps:zxing-android-embedded:4.3.0")
     
     // Apache POI for Excel file parsing
     implementation("org.apache.poi:poi:5.2.5")

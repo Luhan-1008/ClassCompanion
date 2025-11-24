@@ -215,44 +215,9 @@ object CourseImportParser {
      */
     fun generateCsvTemplate(): String {
         return """课程名称,课程代码,教师,地点,星期,开始时间,结束时间,开始周,结束周
-高等数学,MA001, 张老师,教学楼A101,1,08:00,09:40,1,16
-线性代数,MA002, 李老师,教学楼B201,2,10:00,11:40,1,16
-大学英语,EN001, 王老师,教学楼C301,3,14:00,15:40,1,16"""
-    }
-
-    /**
-     * 导出课程为CSV格式
-     */
-    fun exportCoursesToCsv(courses: List<Course>): String {
-        val header = "课程名称,课程代码,教师,地点,星期,开始时间,结束时间,开始周,结束周\n"
-        val content = courses.joinToString("\n") { course ->
-            val dayStr = when (course.dayOfWeek) {
-                1 -> "周一"
-                2 -> "周二"
-                3 -> "周三"
-                4 -> "周四"
-                5 -> "周五"
-                6 -> "周六"
-                7 -> "周日"
-                else -> course.dayOfWeek.toString()
-            }
-            
-            // 处理可能包含逗号的字段，用引号包裹
-            val name = escapeCsv(course.courseName)
-            val code = escapeCsv(course.courseCode ?: "")
-            val teacher = escapeCsv(course.teacherName ?: "")
-            val location = escapeCsv(course.location ?: "")
-            
-            "$name,$code,$teacher,$location,$dayStr,${course.startTime},${course.endTime},${course.startWeek},${course.endWeek}"
-        }
-        return header + content
-    }
-    
-    private fun escapeCsv(value: String): String {
-        if (value.contains(",") || value.contains("\"") || value.contains("\n")) {
-            return "\"" + value.replace("\"", "\"\"") + "\""
-        }
-        return value
+高等数学,MA001,张老师,教学楼A101,1,08:00,09:40,1,16
+线性代数,MA002,李老师,教学楼B201,2,10:00,11:40,1,16
+大学英语,EN001,王老师,教学楼C301,3,14:00,15:40,1,16"""
     }
 }
 

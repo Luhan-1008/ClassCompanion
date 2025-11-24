@@ -30,8 +30,11 @@ import com.example.myapplication.data.model.MemberRole
 import com.example.myapplication.data.repository.AssignmentRepository
 import com.example.myapplication.data.repository.CourseRepository
 import com.example.myapplication.data.repository.GroupMemberRepository
+import com.example.myapplication.data.repository.NotificationRepository
 import com.example.myapplication.data.repository.StudyGroupRepository
 import com.example.myapplication.data.repository.UserRepository
+import com.example.myapplication.data.model.Notification
+import com.example.myapplication.data.model.NotificationType
 import com.example.myapplication.session.CurrentSession
 import com.example.myapplication.ui.viewmodel.StudyGroupViewModel
 import com.example.myapplication.ui.viewmodel.StudyGroupViewModelFactory
@@ -59,6 +62,7 @@ fun GroupDetailScreen(navController: NavHostController, groupId: Int?) {
     val courseRepository = CourseRepository(database.courseDao())
     val assignmentRepository = AssignmentRepository(database.assignmentDao())
     val userRepository = UserRepository(database.userDao())
+    val notificationRepository = NotificationRepository(database.notificationDao())
     val viewModel: StudyGroupViewModel = viewModel(
         factory = StudyGroupViewModelFactory(groupRepository)
     )
@@ -70,6 +74,43 @@ fun GroupDetailScreen(navController: NavHostController, groupId: Int?) {
     val members by remember(groupId) {
         memberRepository.getMembersByGroup(groupId, MemberStatus.JOINED)
     }.collectAsState(initial = emptyList())
+    
+    // 待审核的申请
+    val pendingMembers by remember(groupId) {
+        memberRepository.getMembersByGroup(groupId, MemberStatus.PENDING)
+    }.collectAsState(initial = emptyList())
+    
+    // 过滤掉申请者自己的申请（申请者不能看到自己的申请）
+    val pendingApplications = remember(pendingMembers, userId) {
+        pendingMembers.filter { it.userId != userId }
+    }
+    
+    // 获取所有成员的用户信息（用于显示用户名）
+    val memberUserMap by produceState<Map<Int, com.example.myapplication.data.model.User>>(
+        initialValue = emptyMap(),
+        key1 = members, pendingApplications
+    ) {
+        val map = mutableMapOf<Int, com.example.myapplication.data.model.User>()
+        withContext(Dispatchers.IO) {
+            // 获取已加入成员的用户信息
+            members.forEach { member ->
+                if (!map.containsKey(member.userId)) {
+                    userRepository.getUserById(member.userId)?.let { user ->
+                        map[member.userId] = user
+                    }
+                }
+            }
+            // 获取待审核申请的用户信息
+            pendingApplications.forEach { member ->
+                if (!map.containsKey(member.userId)) {
+                    userRepository.getUserById(member.userId)?.let { user ->
+                        map[member.userId] = user
+                    }
+                }
+            }
+        }
+        value = map
+    }
     val scope = rememberCoroutineScope()
     val snackbarHostState = remember { SnackbarHostState() }
     var showInviteDialog by remember { mutableStateOf(false) }
@@ -229,6 +270,68 @@ fun GroupDetailScreen(navController: NavHostController, groupId: Int?) {
                     )
                 }
                 
+                // 待审核申请（仅创建者和管理员可见，且不包含申请者自己的申请）
+                if (canInvite && pendingApplications.isNotEmpty()) {
+                    item {
+                        Card(
+                            modifier = Modifier.fillMaxWidth(),
+                            shape = RoundedCornerShape(16.dp),
+                            colors = CardDefaults.cardColors(
+                                containerColor = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.3f)
+                            )
+                        ) {
+                            Column(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(16.dp),
+                                verticalArrangement = Arrangement.spacedBy(12.dp)
+                            ) {
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.SpaceBetween,
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Text(
+                                        text = "待审核申请 (${pendingApplications.size})",
+                                        style = MaterialTheme.typography.titleLarge,
+                                        fontWeight = FontWeight.Bold,
+                                        color = MaterialTheme.colorScheme.primary
+                                    )
+                                }
+                                
+                                // 显示待审核的申请（已过滤掉申请者自己的申请）
+                                pendingApplications.forEach { pendingMember ->
+                                    val applicantUser = memberUserMap[pendingMember.userId]
+                                    PendingMemberItem(
+                                        member = pendingMember,
+                                        userName = applicantUser?.username ?: applicantUser?.realName ?: "用户${pendingMember.userId}",
+                                        onApprove = {
+                                            scope.launch {
+                                                memberRepository.updateMemberStatus(
+                                                    groupId,
+                                                    pendingMember.userId,
+                                                    MemberStatus.JOINED
+                                                )
+                                                snackbarHostState.showSnackbar("已同意加入")
+                                            }
+                                        },
+                                        onReject = {
+                                            scope.launch {
+                                                memberRepository.updateMemberStatus(
+                                                    groupId,
+                                                    pendingMember.userId,
+                                                    MemberStatus.LEFT
+                                                )
+                                                snackbarHostState.showSnackbar("已拒绝申请")
+                                            }
+                                        }
+                                    )
+                                }
+                            }
+                        }
+                    }
+                }
+                
                 item {
                     // 成员列表
                     Card(
@@ -280,10 +383,14 @@ fun GroupDetailScreen(navController: NavHostController, groupId: Int?) {
                                 }
                             }
                             sortedMembers.forEach { member ->
+                                val memberUser = memberUserMap[member.userId]
                                 MemberItem(
                                     member = member,
+                                    userName = memberUser?.username ?: memberUser?.realName ?: "用户${member.userId}",
                                     currentUserId = userId,
                                     currentUserRole = currentMember?.role,
+                                    isCreator = isCreator,
+                                    groupCreatorId = group?.creatorId,
                                     onRoleChange = { newRole ->
                                         scope.launch {
                                             memberRepository.updateMember(
@@ -382,6 +489,21 @@ fun GroupDetailScreen(navController: NavHostController, groupId: Int?) {
                                             status = MemberStatus.PENDING
                                         )
                                     )
+                                    // 创建邀请通知
+                                    val currentUser = withContext(Dispatchers.IO) {
+                                        userRepository.getUserById(userId)
+                                    }
+                                    val groupName = group?.groupName ?: "学习小组"
+                                    notificationRepository.insertNotification(
+                                        Notification(
+                                            userId = targetUser.userId,
+                                            type = NotificationType.GROUP_INVITE,
+                                            title = "小组邀请",
+                                            content = "${currentUser?.username ?: "有人"}邀请您加入小组「${groupName}」",
+                                            relatedId = groupId,
+                                            isRead = false
+                                        )
+                                    )
                                 }
                                 existing.status == MemberStatus.JOINED -> {
                                     inviteDialogError = "该成员已在小组中"
@@ -398,6 +520,21 @@ fun GroupDetailScreen(navController: NavHostController, groupId: Int?) {
                                         groupId,
                                         targetUser.userId,
                                         MemberStatus.PENDING
+                                    )
+                                    // 创建邀请通知
+                                    val currentUser = withContext(Dispatchers.IO) {
+                                        userRepository.getUserById(userId)
+                                    }
+                                    val groupName = group?.groupName ?: "学习小组"
+                                    notificationRepository.insertNotification(
+                                        Notification(
+                                            userId = targetUser.userId,
+                                            type = NotificationType.GROUP_INVITE,
+                                            title = "小组邀请",
+                                            content = "${currentUser?.username ?: "有人"}邀请您加入小组「${groupName}」",
+                                            relatedId = groupId,
+                                            isRead = false
+                                        )
                                     )
                                 }
                             }
@@ -542,16 +679,92 @@ fun GroupAssociationCard(
 }
 
 @Composable
+fun PendingMemberItem(
+    member: com.example.myapplication.data.model.GroupMember,
+    userName: String,
+    onApprove: () -> Unit,
+    onReject: () -> Unit
+) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(vertical = 8.dp),
+        horizontalArrangement = Arrangement.SpaceBetween,
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Row(
+            horizontalArrangement = Arrangement.spacedBy(12.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            modifier = Modifier.weight(1f)
+        ) {
+            Surface(
+                modifier = Modifier.size(40.dp),
+                shape = androidx.compose.foundation.shape.CircleShape,
+                color = MaterialTheme.colorScheme.surfaceVariant
+            ) {
+                Box(contentAlignment = Alignment.Center) {
+                    Text(
+                        text = "👤",
+                        style = MaterialTheme.typography.bodyLarge
+                    )
+                }
+            }
+            Column {
+                Text(
+                    text = userName,
+                    style = MaterialTheme.typography.bodyLarge,
+                    fontWeight = FontWeight.Medium
+                )
+                Text(
+                    text = "申请加入",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+        }
+        Row(
+            horizontalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            Button(
+                onClick = onApprove,
+                colors = ButtonDefaults.buttonColors(
+                    containerColor = MaterialTheme.colorScheme.primary
+                ),
+                modifier = Modifier.height(36.dp)
+            ) {
+                Text("同意", style = MaterialTheme.typography.labelMedium)
+            }
+            OutlinedButton(
+                onClick = onReject,
+                modifier = Modifier.height(36.dp)
+            ) {
+                Text("拒绝", style = MaterialTheme.typography.labelMedium)
+            }
+        }
+    }
+}
+
+@Composable
 fun MemberItem(
     member: com.example.myapplication.data.model.GroupMember,
+    userName: String,
     currentUserId: Int,
     currentUserRole: MemberRole?,
+    isCreator: Boolean,
+    groupCreatorId: Int?,
     onRoleChange: (MemberRole) -> Unit,
     onRemove: () -> Unit
 ) {
     var showMenu by remember { mutableStateOf(false) }
-    val canManage = currentUserRole == MemberRole.CREATOR || 
+    var showDeleteConfirm by remember { mutableStateOf(false) }
+    // 判断当前用户是否是创建者（通过group.creatorId或member.role）
+    val userIsCreator = isCreator || (groupCreatorId == currentUserId) || (currentUserRole == MemberRole.CREATOR)
+    // 判断该成员是否是创建者
+    val memberIsCreator = (member.role == MemberRole.CREATOR) || (member.userId == groupCreatorId)
+    // 创建者可以删除所有成员（除了自己），管理员可以删除普通成员
+    val canManage = (userIsCreator && !memberIsCreator) || 
                     (currentUserRole == MemberRole.ADMIN && member.role == MemberRole.MEMBER)
+    val canDelete = userIsCreator && !memberIsCreator
     val isSelf = member.userId == currentUserId
     
     Row(
@@ -584,7 +797,7 @@ fun MemberItem(
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 Text(
-                    text = "用户 ${member.userId}",
+                    text = userName,
                     style = MaterialTheme.typography.bodyLarge,
                     fontWeight = FontWeight.Medium
                 )
@@ -628,46 +841,111 @@ fun MemberItem(
             }
         }
         
+        // 操作按钮区域
         if (canManage && !isSelf) {
-            Box {
-                IconButton(onClick = { showMenu = true }) {
-                    Icon(Icons.Default.MoreVert, contentDescription = "更多")
+            Row(
+                horizontalArrangement = Arrangement.spacedBy(4.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                // 如果有删除权限，直接显示删除按钮
+                if (canDelete) {
+                    IconButton(
+                        onClick = { showDeleteConfirm = true },
+                        modifier = Modifier.size(40.dp)
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Delete,
+                            contentDescription = "删除成员",
+                            tint = MaterialTheme.colorScheme.error,
+                            modifier = Modifier.size(24.dp)
+                        )
+                    }
                 }
-                DropdownMenu(
-                    expanded = showMenu,
-                    onDismissRequest = { showMenu = false }
-                ) {
-                    if (member.role == MemberRole.MEMBER && currentUserRole == MemberRole.CREATOR) {
-                        DropdownMenuItem(
-                            text = { Text("设为管理员") },
-                            onClick = {
-                                showMenu = false
-                                onRoleChange(MemberRole.ADMIN)
-                            }
-                        )
-                    }
-                    if (member.role == MemberRole.ADMIN && currentUserRole == MemberRole.CREATOR) {
-                        DropdownMenuItem(
-                            text = { Text("取消管理员") },
-                            onClick = {
-                                showMenu = false
-                                onRoleChange(MemberRole.MEMBER)
-                            }
-                        )
-                    }
-                    DropdownMenuItem(
-                        text = { Text("移除成员", color = MaterialTheme.colorScheme.error) },
-                        onClick = {
-                            showMenu = false
-                            onRemove()
-                        },
-                        leadingIcon = {
-                            Icon(Icons.Default.Delete, contentDescription = null, tint = MaterialTheme.colorScheme.error)
+                
+                // 如果有其他管理操作（如设置管理员），显示更多按钮
+                if ((member.role == MemberRole.MEMBER && userIsCreator) ||
+                    (member.role == MemberRole.ADMIN && userIsCreator)) {
+                    Box {
+                        IconButton(
+                            onClick = { showMenu = true },
+                            modifier = Modifier.size(40.dp)
+                        ) {
+                            Icon(
+                                Icons.Default.MoreVert,
+                                contentDescription = "更多操作",
+                                modifier = Modifier.size(24.dp)
+                            )
                         }
-                    )
+                        DropdownMenu(
+                            expanded = showMenu,
+                            onDismissRequest = { showMenu = false }
+                        ) {
+                            if (member.role == MemberRole.MEMBER && userIsCreator) {
+                                DropdownMenuItem(
+                                    text = { Text("设为管理员") },
+                                    onClick = {
+                                        showMenu = false
+                                        onRoleChange(MemberRole.ADMIN)
+                                    }
+                                )
+                            }
+                            if (member.role == MemberRole.ADMIN && userIsCreator) {
+                                DropdownMenuItem(
+                                    text = { Text("取消管理员") },
+                                    onClick = {
+                                        showMenu = false
+                                        onRoleChange(MemberRole.MEMBER)
+                                    }
+                                )
+                            }
+                        }
+                    }
                 }
             }
         }
+    }
+    
+    // 删除确认对话框
+    if (showDeleteConfirm) {
+        AlertDialog(
+            onDismissRequest = { showDeleteConfirm = false },
+            title = {
+                Text(
+                    text = "确认删除",
+                    style = MaterialTheme.typography.titleLarge,
+                    fontWeight = FontWeight.Bold
+                )
+            },
+            text = {
+                Text(
+                    text = "确定要移除该成员吗？",
+                    style = MaterialTheme.typography.bodyMedium
+                )
+            },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        showDeleteConfirm = false
+                        onRemove()
+                    },
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = MaterialTheme.colorScheme.error,
+                        contentColor = Color.White
+                    )
+                ) {
+                    Text("删除")
+                }
+            },
+            dismissButton = {
+                TextButton(
+                    onClick = { showDeleteConfirm = false }
+                ) {
+                    Text("取消")
+                }
+            },
+            containerColor = MaterialTheme.colorScheme.surface,
+            shape = RoundedCornerShape(20.dp)
+        )
     }
 }
 

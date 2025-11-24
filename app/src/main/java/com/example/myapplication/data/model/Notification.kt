@@ -33,6 +33,7 @@ enum class NotificationType {
     COURSE_REMINDER, // 课程提醒
     ASSIGNMENT_REMINDER, // 作业提醒
     GROUP_MESSAGE, // 小组消息
+    GROUP_INVITE, // 小组邀请
     SYSTEM_NOTIFICATION // 系统通知
 }
 

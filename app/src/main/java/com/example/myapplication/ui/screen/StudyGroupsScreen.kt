@@ -50,8 +50,36 @@ fun StudyGroupsScreen(navController: NavHostController) {
     val groups by viewModel.groups.collectAsState()
     val userId = CurrentSession.userIdInt ?: 0
     val scope = rememberCoroutineScope()
-    val pendingInvites by memberRepository.getGroupsByMember(userId, MemberStatus.PENDING)
+    val allPendingMembers by memberRepository.getGroupsByMember(userId, MemberStatus.PENDING)
         .collectAsState(initial = emptyList())
+    
+    // 只显示"被邀请加入"的记录，不显示"自己申请加入"的记录
+    // 判断方法：
+    // 1. 如果member.userId == userId，说明是自己申请的，不应该显示
+    // 2. 如果用户是小组创建者，说明是自己申请的，不应该显示
+    // 3. 否则是被邀请的，可以同意
+    val pendingInvites by produceState<List<com.example.myapplication.data.model.GroupMember>>(
+        initialValue = emptyList(),
+        key1 = allPendingMembers
+    ) {
+        val filtered = mutableListOf<com.example.myapplication.data.model.GroupMember>()
+        withContext(Dispatchers.IO) {
+            allPendingMembers.forEach { member ->
+                // 首先排除自己申请的（member.userId == userId 的情况）
+                if (member.userId == userId) {
+                    return@forEach
+                }
+                val group = repository.getGroupById(member.groupId)
+                // 如果用户是创建者，说明是自己申请的（不能同意，需要等待审核）
+                // 如果用户不是创建者，说明是被邀请的（可以同意）
+                if (group != null && group.creatorId != userId) {
+                    filtered.add(member)
+                }
+            }
+        }
+        value = filtered
+    }
+    
     val pendingGroupDetails by produceState<Map<Int, com.example.myapplication.data.model.StudyGroup>>(
         initialValue = emptyMap(),
         key1 = pendingInvites

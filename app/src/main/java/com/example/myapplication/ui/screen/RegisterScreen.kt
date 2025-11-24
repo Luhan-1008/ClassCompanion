@@ -33,7 +33,6 @@ import com.example.myapplication.ui.navigation.Screen
 import com.example.myapplication.ui.viewmodel.AuthResult
 import com.example.myapplication.ui.viewmodel.UserViewModel
 import com.example.myapplication.ui.viewmodel.UserViewModelFactory
-import com.example.myapplication.util.ValidationUtils
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -57,19 +56,14 @@ fun RegisterScreen(navController: NavHostController) {
     var passwordVisible by remember { mutableStateOf(false) }
     var confirmPasswordVisible by remember { mutableStateOf(false) }
     
-    val passwordError = remember(password) { ValidationUtils.getPasswordError(password) }
-    val isPasswordValid = remember(password) { ValidationUtils.isValidPassword(password) }
-    val isEmailValid = remember(email) { ValidationUtils.isValidEmail(email) }
-
     val registerResult by viewModel.registerResult.collectAsState()
     
     val isRegisterEnabled =
         username.isNotBlank() &&
-        isPasswordValid &&
+        password.isNotBlank() &&
         confirmPassword.isNotBlank() &&
         password == confirmPassword &&
         studentId.isNotBlank() &&
-        isEmailValid &&
         registerResult !is AuthResult.Success
     
     // 处理注册结果
@@ -179,15 +173,6 @@ fun RegisterScreen(navController: NavHostController) {
                                     )
                                 }
                             },
-                            isError = password.isNotEmpty() && !isPasswordValid,
-                            supportingText = {
-                                if (password.isNotEmpty() && passwordError != null) {
-                                    Text(
-                                        text = passwordError,
-                                        color = MaterialTheme.colorScheme.error
-                                    )
-                                }
-                            },
                             enabled = registerResult !is AuthResult.Success
                         )
                         
@@ -264,15 +249,6 @@ fun RegisterScreen(navController: NavHostController) {
                             singleLine = true,
                             shape = RoundedCornerShape(12.dp),
                             keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Email),
-                            isError = email.isNotEmpty() && !isEmailValid,
-                            supportingText = {
-                                if (email.isNotEmpty() && !isEmailValid) {
-                                    Text(
-                                        text = "邮箱格式不正确",
-                                        color = MaterialTheme.colorScheme.error
-                                    )
-                                }
-                            },
                             enabled = registerResult !is AuthResult.Success
                         )
                     }

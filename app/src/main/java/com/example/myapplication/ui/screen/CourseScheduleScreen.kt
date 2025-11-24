@@ -15,7 +15,6 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Download
 import androidx.compose.material.icons.filled.MoreVert
-import androidx.compose.material.icons.filled.Share
 import androidx.compose.material.icons.filled.Upload
 import androidx.compose.material.icons.filled.Visibility
 import androidx.compose.material3.*
@@ -33,15 +32,6 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.navigation.NavHostController
 import android.net.Uri
-import android.content.Intent
-import android.content.ContentValues
-import android.provider.MediaStore
-import android.os.Environment
-import android.Manifest
-import android.content.pm.PackageManager
-import androidx.core.content.ContextCompat
-import androidx.core.content.FileProvider
-import java.io.File
 import com.example.myapplication.utils.CourseImportParser
 import com.example.myapplication.session.CurrentSession
 import kotlinx.coroutines.launch
@@ -83,91 +73,10 @@ fun CourseScheduleScreen(navController: NavHostController) {
     var selectedCourse by remember { mutableStateOf<com.example.myapplication.data.model.Course?>(null) }
     var showImportDialog by remember { mutableStateOf(false) }
     var showTemplateDialog by remember { mutableStateOf(false) }
-    var showExportDialog by remember { mutableStateOf(false) }
     var importResult by remember { mutableStateOf<String?>(null) }
     val scope = rememberCoroutineScope()
     val userId = CurrentSession.userIdInt ?: 0
     
-    // 导出功能
-    fun exportCourses(share: Boolean) {
-        scope.launch {
-            try {
-                val csvContent = withContext(Dispatchers.IO) {
-                    CourseImportParser.exportCoursesToCsv(courses)
-                }
-                
-                val fileName = "Course_Schedule_${System.currentTimeMillis()}.csv"
-                
-                if (share) {
-                    // 分享文件
-                    val file = File(context.cacheDir, fileName)
-                    withContext(Dispatchers.IO) {
-                        file.writeText(csvContent)
-                    }
-                    
-                    val uri = FileProvider.getUriForFile(
-                        context,
-                        "${context.packageName}.fileprovider",
-                        file
-                    )
-                    
-                    val intent = Intent(Intent.ACTION_SEND).apply {
-                        type = "text/csv"
-                        putExtra(Intent.EXTRA_STREAM, uri)
-                        addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
-                    }
-                    
-                    context.startActivity(Intent.createChooser(intent, "导出课程表"))
-                } else {
-                    // 保存到本地
-                    if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.Q) {
-                        val contentValues = ContentValues().apply {
-                            put(MediaStore.MediaColumns.DISPLAY_NAME, fileName)
-                            put(MediaStore.MediaColumns.MIME_TYPE, "text/csv")
-                            put(MediaStore.MediaColumns.RELATIVE_PATH, Environment.DIRECTORY_DOWNLOADS)
-                        }
-                        val uri = context.contentResolver.insert(MediaStore.Downloads.EXTERNAL_CONTENT_URI, contentValues)
-                        uri?.let {
-                            context.contentResolver.openOutputStream(it)?.use { stream ->
-                                stream.write(csvContent.toByteArray())
-                            }
-                            importResult = "已保存到下载目录"
-                            showImportDialog = true
-                        } ?: run {
-                            importResult = "保存失败"
-                            showImportDialog = true
-                        }
-                    } else {
-                        // 旧版本直接保存到 SD 卡根目录
-                        val sdCardDir = Environment.getExternalStorageDirectory()
-                        val file = File(sdCardDir, fileName)
-                        withContext(Dispatchers.IO) {
-                            file.writeText(csvContent)
-                        }
-                        importResult = "已保存到SD卡: ${file.absolutePath}"
-                        showImportDialog = true
-                    }
-                }
-            } catch (e: Exception) {
-                e.printStackTrace()
-                importResult = "导出失败: ${e.message}"
-                showImportDialog = true
-            }
-        }
-    }
-
-    // 权限请求
-    val permissionLauncher = rememberLauncherForActivityResult(
-        contract = ActivityResultContracts.RequestPermission()
-    ) { isGranted: Boolean ->
-        if (isGranted) {
-            exportCourses(share = false)
-        } else {
-            importResult = "需要存储权限才能保存到SD卡"
-            showImportDialog = true
-        }
-    }
-
     val assignments by remember(userId) {
         assignmentRepository.getAssignmentsByUser(userId)
     }.collectAsState(initial = emptyList())
@@ -287,15 +196,15 @@ fun CourseScheduleScreen(navController: NavHostController) {
                             contentDescription = "导入课程"
                         )
                     }
-                    // 导出按钮
+                    // 下载模板按钮
                     IconButton(
                         onClick = {
-                            showExportDialog = true
+                            showTemplateDialog = true
                         }
                     ) {
                         Icon(
                             imageVector = Icons.Default.Download,
-                            contentDescription = "导出课程"
+                            contentDescription = "下载模板"
                         )
                     }
                     // 视图切换
@@ -509,64 +418,6 @@ fun CourseScheduleScreen(navController: NavHostController) {
             )
         }
         
-        // 导出选项对话框
-        if (showExportDialog) {
-            AlertDialog(
-                onDismissRequest = { showExportDialog = false },
-                title = {
-                    Text(
-                        text = "导出课程表",
-                        style = MaterialTheme.typography.titleLarge,
-                        fontWeight = FontWeight.Bold
-                    )
-                },
-                text = {
-                    Column(
-                        verticalArrangement = Arrangement.spacedBy(8.dp)
-                    ) {
-                        OutlinedButton(
-                            onClick = {
-                                showExportDialog = false
-                                exportCourses(share = true)
-                            },
-                            modifier = Modifier.fillMaxWidth()
-                        ) {
-                            Icon(Icons.Default.Share, contentDescription = null)
-                            Spacer(modifier = Modifier.width(8.dp))
-                            Text("分享文件")
-                        }
-                        
-                        OutlinedButton(
-                            onClick = {
-                                showExportDialog = false
-                                if (android.os.Build.VERSION.SDK_INT < android.os.Build.VERSION_CODES.Q) {
-                                    if (ContextCompat.checkSelfPermission(context, Manifest.permission.WRITE_EXTERNAL_STORAGE) == PackageManager.PERMISSION_GRANTED) {
-                                        exportCourses(share = false)
-                                    } else {
-                                        permissionLauncher.launch(Manifest.permission.WRITE_EXTERNAL_STORAGE)
-                                    }
-                                } else {
-                                    exportCourses(share = false)
-                                }
-                            },
-                            modifier = Modifier.fillMaxWidth()
-                        ) {
-                            Icon(Icons.Default.Download, contentDescription = null)
-                            Spacer(modifier = Modifier.width(8.dp))
-                            Text("保存到本地")
-                        }
-                    }
-                },
-                confirmButton = {
-                    TextButton(onClick = { showExportDialog = false }) {
-                        Text("取消")
-                    }
-                },
-                containerColor = MaterialTheme.colorScheme.surface,
-                shape = RoundedCornerShape(20.dp)
-            )
-        }
-
         // 导入结果对话框
         if (showImportDialog && importResult != null) {
             AlertDialog(
@@ -638,9 +489,9 @@ fun CourseScheduleScreen(navController: NavHostController) {
                         Text(
                             text = "说明：\n" +
                                     "• 第一行为表头，必须保留\n" +
-                                    "• 星期： 1-7 （1=周一， 7=周日） 或中文 （周一-周日）\n" +
-                                    "• 时间格式： HH:mm （如 08:00）\n" +
-                                    "• 开始周和结束周： 数字 （如 1-16）",
+                                    "• 星期：1-7（1=周一，7=周日）或中文（周一-周日）\n" +
+                                    "• 时间格式：HH:mm（如 08:00）\n" +
+                                    "• 开始周和结束周：数字（如 1-16）",
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )

@@ -131,6 +131,18 @@ class UserViewModel(
             }
         }
     }
+    
+    fun deleteAccount(user: User) {
+        viewModelScope.launch {
+            try {
+                repository.deleteUser(user)
+                logout()
+            } catch (e: Exception) {
+                // 处理删除失败的情况
+                throw e
+            }
+        }
+    }
 }
 
 class UserViewModelFactory(
