@@ -36,8 +36,6 @@ import com.example.myapplication.data.model.MemberStatus
 import com.example.myapplication.data.repository.GroupInviteRepository
 import com.example.myapplication.data.repository.GroupMemberRepository
 import com.example.myapplication.session.CurrentSession
-import com.journeyapps.barcodescanner.ScanContract
-import com.journeyapps.barcodescanner.ScanOptions
 import kotlinx.coroutines.launch
 
 @OptIn(ExperimentalMaterial3Api::class)

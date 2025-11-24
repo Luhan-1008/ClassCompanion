@@ -26,6 +26,7 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.platform.LocalContext
@@ -59,8 +60,6 @@ fun ProfileScreen(navController: NavHostController) {
     
     val currentUser by viewModel.currentUser.collectAsState()
     var showLogoutDialog by remember { mutableStateOf(false) }
-    var isSwitchAccount by remember { mutableStateOf(false) }
-    var showDeleteAccountDialog by remember { mutableStateOf(false) }
     var avatarBitmap by remember { mutableStateOf<ImageBitmap?>(null) }
     val scope = rememberCoroutineScope()
     
@@ -140,82 +139,156 @@ fun ProfileScreen(navController: NavHostController) {
                 .padding(padding)
                 .fillMaxSize()
                 .background(MaterialTheme.colorScheme.background)
-            // 用户信息卡片
-            Surface(
+                .verticalScroll(rememberScrollState())
+        ) {
+            // 用户信息卡片 - 美化版本
+            Box(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(16.dp),
-                shape = RoundedCornerShape(16.dp),
-                color = MaterialTheme.colorScheme.surface
+                    .padding(horizontal = 16.dp, vertical = 8.dp)
             ) {
-                Column(
+                // 渐变背景
+                Surface(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .padding(20.dp),
-                    horizontalAlignment = Alignment.CenterHorizontally,
-                    verticalArrangement = Arrangement.spacedBy(16.dp)
+                        .shadow(8.dp, shape = RoundedCornerShape(24.dp)),
+                    shape = RoundedCornerShape(24.dp)
                 ) {
-                    // 头像
                     Box(
                         modifier = Modifier
-                            .size(80.dp)
-                            .clip(CircleShape)
-                            .clickable { imagePickerLauncher.launch("image/*") }
-                            .background(MaterialTheme.colorScheme.primaryContainer),
-                        contentAlignment = Alignment.Center
+                            .fillMaxWidth()
+                            .background(
+                                Brush.verticalGradient(
+                                    colors = listOf(
+                                        MaterialTheme.colorScheme.primary,
+                                        MaterialTheme.colorScheme.secondary
+                                    )
+                                )
+                            )
+                            .padding(24.dp)
                     ) {
-                        if (avatarBitmap != null) {
-                            Image(
-                                bitmap = avatarBitmap!!,
-                                contentDescription = "头像",
+                        Column(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalAlignment = Alignment.CenterHorizontally,
+                            verticalArrangement = Arrangement.spacedBy(20.dp)
+                        ) {
+                            // 头像 - 带边框和阴影
+                            Box(
                                 modifier = Modifier
-                                    .fillMaxSize()
-                                    .clip(CircleShape),
-                                contentScale = ContentScale.Crop
-                            )
-                        } else {
-                            Icon(
-                                imageVector = Icons.Default.Person,
-                                contentDescription = "头像",
-                                modifier = Modifier.size(48.dp),
-                                tint = MaterialTheme.colorScheme.primary
-                            )
-                        }
-                    }
-                    
-                    Column(
-                        horizontalAlignment = Alignment.CenterHorizontally,
-                        verticalArrangement = Arrangement.spacedBy(8.dp)
-                    ) {
-                        val user = currentUser
-                        if (user != null) {
-                            if (!user.realName.isNullOrEmpty()) {
-                                Text(
-                                    text = user.realName,
-                                    style = MaterialTheme.typography.titleLarge,
-                                    fontWeight = FontWeight.Bold
-                                )
+                                    .size(100.dp)
+                                    .shadow(12.dp, shape = CircleShape)
+                            ) {
+                                Box(
+                                    modifier = Modifier
+                                        .fillMaxSize()
+                                        .clip(CircleShape)
+                                        .background(Color.White)
+                                        .clickable { imagePickerLauncher.launch("image/*") }
+                                        .padding(4.dp),
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    if (avatarBitmap != null) {
+                                        Image(
+                                            bitmap = avatarBitmap!!,
+                                            contentDescription = "头像",
+                                            modifier = Modifier
+                                                .fillMaxSize()
+                                                .clip(CircleShape),
+                                            contentScale = ContentScale.Crop
+                                        )
+                                    } else {
+                                        Icon(
+                                            imageVector = Icons.Default.Person,
+                                            contentDescription = "头像",
+                                            modifier = Modifier.size(56.dp),
+                                            tint = MaterialTheme.colorScheme.primary
+                                        )
+                                    }
+                                }
                             }
-                            Text(
-                                text = user.username,
-                                style = MaterialTheme.typography.bodyLarge,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant
-                            )
-                            val studentId = user.studentId
-                            if (!studentId.isNullOrEmpty()) {
-                                Text(
-                                    text = "学号: $studentId",
-                                    style = MaterialTheme.typography.bodyMedium,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                                )
-                            }
-                            val email = user.email
-                            if (!email.isNullOrEmpty()) {
-                                Text(
-                                    text = email,
-                                    style = MaterialTheme.typography.bodySmall,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f)
-                                )
+                            
+                            // 用户信息
+                            Column(
+                                horizontalAlignment = Alignment.CenterHorizontally,
+                                verticalArrangement = Arrangement.spacedBy(12.dp)
+                            ) {
+                                val user = currentUser
+                                if (user != null) {
+                                    if (!user.realName.isNullOrEmpty()) {
+                                        Text(
+                                            text = user.realName,
+                                            style = MaterialTheme.typography.headlineMedium,
+                                            fontWeight = FontWeight.Bold,
+                                            color = Color.White
+                                        )
+                                    }
+                                    Text(
+                                        text = "@${user.username}",
+                                        style = MaterialTheme.typography.titleMedium,
+                                        color = Color.White.copy(alpha = 0.9f)
+                                    )
+                                    
+                                    // 信息标签行
+                                    Row(
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .padding(top = 8.dp),
+                                        horizontalArrangement = Arrangement.spacedBy(12.dp),
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        if (!user.studentId.isNullOrEmpty()) {
+                                            Surface(
+                                                shape = RoundedCornerShape(12.dp),
+                                                color = Color.White.copy(alpha = 0.2f),
+                                                modifier = Modifier.padding(horizontal = 4.dp)
+                                            ) {
+                                                Row(
+                                                    modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp),
+                                                    verticalAlignment = Alignment.CenterVertically,
+                                                    horizontalArrangement = Arrangement.spacedBy(6.dp)
+                                                ) {
+                                                    Icon(
+                                                        imageVector = Icons.Default.School,
+                                                        contentDescription = "学号",
+                                                        modifier = Modifier.size(16.dp),
+                                                        tint = Color.White
+                                                    )
+                                                    Text(
+                                                        text = user.studentId,
+                                                        style = MaterialTheme.typography.bodyMedium,
+                                                        color = Color.White,
+                                                        fontWeight = FontWeight.Medium
+                                                    )
+                                                }
+                                            }
+                                        }
+                                        if (!user.email.isNullOrEmpty()) {
+                                            Surface(
+                                                shape = RoundedCornerShape(12.dp),
+                                                color = Color.White.copy(alpha = 0.2f),
+                                                modifier = Modifier.padding(horizontal = 4.dp)
+                                            ) {
+                                                Row(
+                                                    modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp),
+                                                    verticalAlignment = Alignment.CenterVertically,
+                                                    horizontalArrangement = Arrangement.spacedBy(6.dp)
+                                                ) {
+                                                    Icon(
+                                                        imageVector = Icons.Default.Mail,
+                                                        contentDescription = "邮箱",
+                                                        modifier = Modifier.size(16.dp),
+                                                        tint = Color.White
+                                                    )
+                                                    Text(
+                                                        text = user.email,
+                                                        style = MaterialTheme.typography.bodySmall,
+                                                        color = Color.White.copy(alpha = 0.9f)
+                                                    )
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
                             }
                         }
                     }
@@ -266,23 +339,6 @@ fun ProfileScreen(navController: NavHostController) {
                     ) {
                         navController.navigate("learning_analytics")
                     }
-                    
-                    NavigationMenuItem(
-                        icon = Icons.Default.SwapHoriz,
-                        title = "切换账号",
-                        description = "登录其他账号"
-                    ) {
-                        isSwitchAccount = true
-                        showLogoutDialog = true
-                    }
-                    
-                    NavigationMenuItem(
-                        icon = Icons.Default.DeleteForever,
-                        title = "注销账号",
-                        description = "永久删除账号及所有数据"
-                    ) {
-                        showDeleteAccountDialog = true
-                    }
                 }
             }
             
@@ -324,26 +380,22 @@ fun ProfileScreen(navController: NavHostController) {
         }
     }
     
-    // 退出登录/切换账号确认对话框
+    // 退出登录确认对话框
     if (showLogoutDialog) {
         AlertDialog(
             onDismissRequest = { 
                 showLogoutDialog = false
-                isSwitchAccount = false
             },
             title = {
                 Text(
-                    text = if (isSwitchAccount) "切换账号" else "确认退出",
+                    text = "确认退出",
                     style = MaterialTheme.typography.titleLarge,
                     fontWeight = FontWeight.Bold
                 )
             },
             text = {
                 Text(
-                    text = if (isSwitchAccount) 
-                        "确定要切换账号吗？切换后需要重新登录才能使用应用。" 
-                    else 
-                        "确定要退出登录吗？退出后需要重新登录才能使用应用。",
+                    text = "确定要退出登录吗？退出后需要重新登录才能使用应用。",
                     style = MaterialTheme.typography.bodyMedium
                 )
             },
@@ -351,91 +403,9 @@ fun ProfileScreen(navController: NavHostController) {
                 Button(
                     onClick = {
                         showLogoutDialog = false
-                        val switch = isSwitchAccount
-                        isSwitchAccount = false
                         viewModel.logout()
                         navController.navigate(Screen.Login.route) {
                             popUpTo(0) { inclusive = true }
-                        }
-                    },
-                    colors = ButtonDefaults.buttonColors(
-                        containerColor = if (isSwitchAccount) 
-                            MaterialTheme.colorScheme.primary 
-                        else 
-                            MaterialTheme.colorScheme.error,
-                        contentColor = Color.White
-                    )
-                ) {
-                    Text(if (isSwitchAccount) "切换" else "退出")
-                }
-            },
-            dismissButton = {
-                TextButton(
-                    onClick = { 
-                        showLogoutDialog = false
-                        isSwitchAccount = false
-                    }
-                ) {
-                    Text("取消")
-                }
-            },
-            containerColor = MaterialTheme.colorScheme.surface,
-            shape = RoundedCornerShape(20.dp)
-        )
-    }
-    
-    // 注销账号确认对话框
-    if (showDeleteAccountDialog) {
-        AlertDialog(
-            onDismissRequest = { showDeleteAccountDialog = false },
-            title = {
-                Text(
-                    text = "注销账号",
-                    style = MaterialTheme.typography.titleLarge,
-                    fontWeight = FontWeight.Bold,
-                    color = MaterialTheme.colorScheme.error
-                )
-            },
-            text = {
-                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Text(
-                        text = "警告：此操作不可恢复！",
-                        style = MaterialTheme.typography.bodyLarge,
-                        fontWeight = FontWeight.Bold,
-                        color = MaterialTheme.colorScheme.error
-                    )
-                    Text(
-                        text = "注销账号将永久删除您的账号及所有相关数据，包括：",
-                        style = MaterialTheme.typography.bodyMedium
-                    )
-                    Text(
-                        text = "• 个人信息\n• 创建的学习小组\n• 加入的小组数据\n• 课程和任务记录\n• 所有其他相关数据",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-                    Text(
-                        text = "确定要继续吗？",
-                        style = MaterialTheme.typography.bodyMedium,
-                        fontWeight = FontWeight.Medium
-                    )
-                }
-            },
-            confirmButton = {
-                Button(
-                    onClick = {
-                        currentUser?.let { user ->
-                            scope.launch {
-                                try {
-                                    viewModel.deleteAccount(user)
-                                    showDeleteAccountDialog = false
-                                    navController.navigate(Screen.Login.route) {
-                                        popUpTo(0) { inclusive = true }
-                                    }
-                                } catch (e: Exception) {
-                                    // 可以显示错误提示
-                                    showDeleteAccountDialog = false
-                                }
-                            }
                         }
                     },
                     colors = ButtonDefaults.buttonColors(
@@ -443,12 +413,14 @@ fun ProfileScreen(navController: NavHostController) {
                         contentColor = Color.White
                     )
                 ) {
-                    Text("确认注销")
+                    Text("退出")
                 }
             },
             dismissButton = {
                 TextButton(
-                    onClick = { showDeleteAccountDialog = false }
+                    onClick = { 
+                        showLogoutDialog = false
+                    }
                 ) {
                     Text("取消")
                 }
@@ -525,59 +497,5 @@ private fun saveAvatarToInternalStorage(context: Context, bitmap: Bitmap, userId
         file.absolutePath
     } catch (e: Exception) {
         null
-    }
-}
-
-@Composable
-fun NavigationMenuItem(
-    icon: androidx.compose.ui.graphics.vector.ImageVector,
-    title: String,
-    description: String,
-    onClick: () -> Unit
-) {
-    Card(
-        onClick = onClick,
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(vertical = 4.dp),
-        shape = RoundedCornerShape(12.dp),
-        colors = CardDefaults.cardColors(
-            containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)
-        )
-    ) {
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(16.dp),
-            horizontalArrangement = Arrangement.spacedBy(16.dp),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            Icon(
-                imageVector = icon,
-                contentDescription = title,
-                modifier = Modifier.size(32.dp),
-                tint = MaterialTheme.colorScheme.primary
-            )
-            Column(
-                modifier = Modifier.weight(1f),
-                verticalArrangement = Arrangement.spacedBy(4.dp)
-            ) {
-                Text(
-                    text = title,
-                    style = MaterialTheme.typography.titleMedium,
-                    fontWeight = FontWeight.Medium
-                )
-                Text(
-                    text = description,
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
-            }
-            Text(
-                text = "›",
-                style = MaterialTheme.typography.titleLarge,
-                color = MaterialTheme.colorScheme.onSurfaceVariant
-            )
-        }
     }
 }
