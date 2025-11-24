@@ -14,6 +14,9 @@ interface CourseDao {
     
     @Query("SELECT * FROM courses WHERE courseId = :courseId")
     suspend fun getCourseById(courseId: Int): Course?
+
+    @Query("SELECT * FROM courses WHERE userId = :userId ORDER BY dayOfWeek, startTime")
+    suspend fun getCoursesSnapshot(userId: Int): List<Course>
     
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertCourse(course: Course): Long

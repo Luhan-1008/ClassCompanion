@@ -78,6 +78,9 @@ dependencies {
     implementation(libs.retrofit.gson)
     implementation(libs.gson)
     
+    // OkHttp (for AI model service)
+    implementation("com.squareup.okhttp3:okhttp:4.12.0")
+    
     // Coroutines
     implementation(libs.kotlinx.coroutines.android)
     
@@ -90,6 +93,7 @@ dependencies {
     // Apache POI for Excel file parsing
     implementation("org.apache.poi:poi:5.2.5")
     implementation("org.apache.poi:poi-ooxml:5.2.5")
+    implementation("com.journeyapps:zxing-android-embedded:4.3.0")
     
     // CSV parsing (simple implementation, no external library needed)
     

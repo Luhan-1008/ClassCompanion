@@ -9,15 +9,13 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
-import androidx.compose.material.icons.filled.ChevronRight
-import androidx.compose.material.icons.filled.QrCode
-import androidx.compose.material.icons.filled.Search
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.shadow
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
@@ -26,6 +24,7 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.navigation.NavHostController
 import com.example.myapplication.data.database.AppDatabase
 import com.example.myapplication.data.model.MemberStatus
+import com.example.myapplication.data.repository.CourseRepository
 import com.example.myapplication.data.repository.StudyGroupRepository
 import com.example.myapplication.data.repository.GroupMemberRepository
 import com.example.myapplication.session.CurrentSession
@@ -43,6 +42,7 @@ fun StudyGroupsScreen(navController: NavHostController) {
     val database = AppDatabase.getDatabase(context)
     val repository = StudyGroupRepository(database.studyGroupDao())
     val memberRepository = GroupMemberRepository(database.groupMemberDao())
+    val courseRepository = CourseRepository(database.courseDao())
     val viewModel: StudyGroupViewModel = viewModel(
         factory = StudyGroupViewModelFactory(repository)
     )
@@ -67,6 +67,12 @@ fun StudyGroupsScreen(navController: NavHostController) {
         value = map
     }
     
+    val courses by remember(userId) {
+        courseRepository.getCoursesByUser(userId)
+    }.collectAsState(initial = emptyList())
+    val courseMap = remember(courses) { courses.associateBy { it.courseId } }
+    var showActionMenu by remember { mutableStateOf(false) }
+    
     Scaffold(
         topBar = {
             TopAppBar(
@@ -78,21 +84,39 @@ fun StudyGroupsScreen(navController: NavHostController) {
                     )
                 },
                 actions = {
-                    IconButton(
-                        onClick = { navController.navigate("join_group_by_invite") }
-                    ) {
-                        Icon(
-                            imageVector = Icons.Default.QrCode,
-                            contentDescription = "通过邀请码加入"
-                        )
-                    }
-                    IconButton(
-                        onClick = { navController.navigate("group_discovery") }
-                    ) {
-                        Icon(
-                            imageVector = Icons.Default.Search,
-                            contentDescription = "发现小组"
-                        )
+                    Box {
+                        IconButton(onClick = { showActionMenu = !showActionMenu }) {
+                            Icon(
+                                imageVector = Icons.Default.Add,
+                                contentDescription = "小组操作"
+                            )
+                        }
+                        DropdownMenu(
+                            expanded = showActionMenu,
+                            onDismissRequest = { showActionMenu = false }
+                        ) {
+                            DropdownMenuItem(
+                                text = { Text("创建小组") },
+                                onClick = {
+                                    showActionMenu = false
+                                    navController.navigate(Screen.CreateGroup.route)
+                                }
+                            )
+                            DropdownMenuItem(
+                                text = { Text("发现小组") },
+                                onClick = {
+                                    showActionMenu = false
+                                    navController.navigate("group_discovery")
+                                }
+                            )
+                            DropdownMenuItem(
+                                text = { Text("加入小组") },
+                                onClick = {
+                                    showActionMenu = false
+                                    navController.navigate("join_group_by_invite")
+                                }
+                            )
+                        }
                     }
                 },
                 colors = TopAppBarDefaults.topAppBarColors(
@@ -101,20 +125,8 @@ fun StudyGroupsScreen(navController: NavHostController) {
                 ),
                 modifier = Modifier.shadow(2.dp)
             )
-        },
-        floatingActionButton = {
-            ExtendedFloatingActionButton(
-                onClick = { navController.navigate(Screen.CreateGroup.route) },
-                containerColor = MaterialTheme.colorScheme.primary,
-                contentColor = Color.White,
-                modifier = Modifier.shadow(8.dp, shape = RoundedCornerShape(16.dp))
-            ) {
-                Icon(Icons.Default.Add, contentDescription = "创建小组")
-                Spacer(modifier = Modifier.width(8.dp))
-                Text("创建小组")
-            }
         }
-        ) { padding ->
+    ) { padding ->
         LazyColumn(
             modifier = Modifier
                 .padding(padding)
@@ -185,7 +197,7 @@ fun StudyGroupsScreen(navController: NavHostController) {
                                 color = MaterialTheme.colorScheme.onSurfaceVariant
                             )
                             Text(
-                                text = "点击右下角按钮创建小组",
+                                text = "点击右上角加号完成创建或加入",
                                 style = MaterialTheme.typography.bodySmall,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f)
                             )
@@ -194,8 +206,10 @@ fun StudyGroupsScreen(navController: NavHostController) {
                 }
             } else {
                 items(groups) { group ->
+                    val courseName = group.courseId?.let { courseMap[it]?.courseName }
                     StudyGroupCard(
                         group = group,
+                        courseName = courseName,
                         onClick = {
                             navController.navigate("${Screen.GroupDetail.route}/${group.groupId}")
                         }
@@ -209,117 +223,35 @@ fun StudyGroupsScreen(navController: NavHostController) {
 @Composable
 fun StudyGroupCard(
     group: com.example.myapplication.data.model.StudyGroup,
+    courseName: String?,
     onClick: () -> Unit
 ) {
     Card(
         modifier = Modifier
             .fillMaxWidth()
-            .shadow(6.dp, shape = RoundedCornerShape(20.dp)),
-        shape = RoundedCornerShape(20.dp),
+            .shadow(2.dp, shape = RoundedCornerShape(18.dp)),
+        shape = RoundedCornerShape(18.dp),
         colors = CardDefaults.cardColors(
             containerColor = MaterialTheme.colorScheme.surface
         ),
         onClick = onClick
     ) {
-        Box(
+        Column(
             modifier = Modifier
                 .fillMaxWidth()
-                .background(
-                    brush = androidx.compose.ui.graphics.Brush.linearGradient(
-                        colors = listOf(
-                            MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.3f),
-                            MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.1f),
-                            MaterialTheme.colorScheme.surface
-                        )
-                    )
-                )
+                .padding(horizontal = 20.dp, vertical = 16.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp)
         ) {
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(20.dp),
-                horizontalArrangement = Arrangement.spacedBy(16.dp)
-            ) {
-                // 左侧图标区域
-                Box(
-                    modifier = Modifier
-                        .size(56.dp)
-                        .clip(RoundedCornerShape(14.dp))
-                        .background(
-                            brush = androidx.compose.ui.graphics.Brush.linearGradient(
-                                colors = listOf(
-                                    MaterialTheme.colorScheme.primary,
-                                    MaterialTheme.colorScheme.secondary
-                                )
-                            )
-                        ),
-                    contentAlignment = Alignment.Center
-                ) {
-                    Text(
-                        text = "👥",
-                        style = MaterialTheme.typography.headlineMedium
-                    )
-                }
-                
-                Column(
-                    modifier = Modifier.weight(1f),
-                    verticalArrangement = Arrangement.spacedBy(8.dp)
-                ) {
-                    Text(
-                        text = group.groupName,
-                        style = MaterialTheme.typography.titleLarge,
-                        fontWeight = FontWeight.Bold,
-                        color = MaterialTheme.colorScheme.onSurface
-                    )
-                    if (!group.description.isNullOrEmpty()) {
-                        Text(
-                            text = group.description,
-                            style = MaterialTheme.typography.bodyMedium,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            maxLines = 2
-                        )
-                    }
-                    Row(
-                        horizontalArrangement = Arrangement.spacedBy(8.dp),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        if (!group.topic.isNullOrEmpty()) {
-                            Surface(
-                                shape = RoundedCornerShape(8.dp),
-                                color = MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.6f)
-                            ) {
-                                Text(
-                                    text = group.topic,
-                                    style = MaterialTheme.typography.labelSmall,
-                                    modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp),
-                                    color = MaterialTheme.colorScheme.onSecondaryContainer
-                                )
-                            }
-                        }
-                        if (group.isPublic) {
-                            Surface(
-                                shape = RoundedCornerShape(8.dp),
-                                color = MaterialTheme.colorScheme.tertiaryContainer.copy(alpha = 0.6f)
-                            ) {
-                                Text(
-                                    text = "公开",
-                                    style = MaterialTheme.typography.labelSmall,
-                                    modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp),
-                                    color = MaterialTheme.colorScheme.onTertiaryContainer
-                                )
-                            }
-                        }
-                    }
-                }
-                
-                // 右侧箭头
-                Icon(
-                    imageVector = Icons.Default.ChevronRight,
-                    contentDescription = "进入",
-                    tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f),
-                    modifier = Modifier.size(24.dp)
-                )
-            }
+            Text(
+                text = "${group.groupName} (${if (group.isPublic) "公开" else "私密"})",
+                style = MaterialTheme.typography.titleMedium,
+                fontWeight = FontWeight.Bold
+            )
+            Text(
+                text = "关联课程：${courseName ?: "未关联"}",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
         }
     }
 }
@@ -420,4 +352,5 @@ fun PendingInviteCard(
         }
     }
 }
+
 

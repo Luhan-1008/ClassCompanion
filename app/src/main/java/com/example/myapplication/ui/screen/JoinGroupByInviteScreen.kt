@@ -1,5 +1,6 @@
 package com.example.myapplication.ui.screen
 
+import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
@@ -23,6 +24,8 @@ import com.example.myapplication.data.model.MemberStatus
 import com.example.myapplication.data.repository.GroupInviteRepository
 import com.example.myapplication.data.repository.GroupMemberRepository
 import com.example.myapplication.session.CurrentSession
+import com.journeyapps.barcodescanner.ScanContract
+import com.journeyapps.barcodescanner.ScanOptions
 import kotlinx.coroutines.launch
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -38,6 +41,26 @@ fun JoinGroupByInviteScreen(navController: NavHostController) {
     var isLoading by remember { mutableStateOf(false) }
     val scope = rememberCoroutineScope()
     val userId = CurrentSession.userIdInt ?: 0
+    val scanLauncher = rememberLauncherForActivityResult(ScanContract()) { result ->
+        if (result.contents != null) {
+            val extracted = Regex("([A-Za-z0-9]{6})")
+                .find(result.contents.uppercase())
+                ?.value
+            if (extracted != null) {
+                inviteCode = extracted
+                scope.launch {
+                    isLoading = true
+                    errorMessage = null
+                    handleJoin(inviteCode, inviteRepository, memberRepository, userId, navController) { msg ->
+                        errorMessage = msg
+                    }
+                    isLoading = false
+                }
+            } else {
+                errorMessage = "二维码中未找到有效邀请码"
+            }
+        }
+    }
     
     Scaffold(
         topBar = {
@@ -175,68 +198,10 @@ fun JoinGroupByInviteScreen(navController: NavHostController) {
                             scope.launch {
                                 isLoading = true
                                 errorMessage = null
-                                
-                                try {
-                                    // 查找邀请码
-                                    val invite = inviteRepository.getInviteByCode(inviteCode)
-                                    if (invite == null) {
-                                        errorMessage = "邀请码不存在"
-                                        isLoading = false
-                                        return@launch
-                                    }
-                                    
-                                    // 检查是否过期
-                                    if (invite.expiresAt != null && invite.expiresAt < System.currentTimeMillis()) {
-                                        errorMessage = "邀请码已过期"
-                                        isLoading = false
-                                        return@launch
-                                    }
-                                    
-                                    // 检查使用次数
-                                    if (invite.maxUses != null && invite.currentUses >= invite.maxUses) {
-                                        errorMessage = "邀请码已达到最大使用次数"
-                                        isLoading = false
-                                        return@launch
-                                    }
-                                    
-                                    // 检查是否已经加入
-                                    val existingMember = memberRepository.getMember(invite.groupId, userId)
-                                    if (existingMember != null && existingMember.status == MemberStatus.JOINED) {
-                                        errorMessage = "您已经加入该小组"
-                                        isLoading = false
-                                        return@launch
-                                    }
-                                    
-                                    // 添加成员
-                                    if (existingMember == null) {
-                                        val newMember = GroupMember(
-                                            groupId = invite.groupId,
-                                            userId = userId,
-                                            role = MemberRole.MEMBER,
-                                            status = MemberStatus.JOINED
-                                        )
-                                        memberRepository.insertMember(newMember)
-                                    } else {
-                                        // 如果之前退出过，重新加入
-                                        memberRepository.updateMemberStatus(
-                                            invite.groupId,
-                                            userId,
-                                            MemberStatus.JOINED
-                                        )
-                                    }
-                                    
-                                    // 更新邀请码使用次数
-                                    inviteRepository.incrementUseCount(invite.inviteId)
-                                    
-                                    // 成功，返回并导航到小组详情
-                                    navController.popBackStack()
-                                    navController.navigate("group_detail/${invite.groupId}")
-                                    
-                                } catch (e: Exception) {
-                                    errorMessage = "加入失败: ${e.message}"
-                                } finally {
-                                    isLoading = false
+                                handleJoin(inviteCode, inviteRepository, memberRepository, userId, navController) { msg ->
+                                    errorMessage = msg
                                 }
+                                isLoading = false
                             }
                         },
                         modifier = Modifier
@@ -271,11 +236,15 @@ fun JoinGroupByInviteScreen(navController: NavHostController) {
                 }
             }
             
-            // 扫码按钮（暂时显示，后续可以实现扫码功能）
             OutlinedButton(
                 onClick = {
-                    // TODO: 实现扫码功能
-                    errorMessage = "扫码功能暂未实现，请使用邀请码"
+                    val options = ScanOptions().apply {
+                        setDesiredBarcodeFormats(ScanOptions.QR_CODE)
+                        setPrompt("请扫描学习小组二维码")
+                        setBeepEnabled(false)
+                        setOrientationLocked(false)
+                    }
+                    scanLauncher.launch(options)
                 },
                 modifier = Modifier
                     .fillMaxWidth()
@@ -298,6 +267,63 @@ fun JoinGroupByInviteScreen(navController: NavHostController) {
                 )
             }
         }
+    }
+}
+
+private suspend fun handleJoin(
+    code: String,
+    inviteRepository: GroupInviteRepository,
+    memberRepository: GroupMemberRepository,
+    userId: Int,
+    navController: NavHostController,
+    onError: (String?) -> Unit
+) {
+    try {
+        val invite = inviteRepository.getInviteByCode(code)
+        if (invite == null) {
+            onError("邀请码不存在")
+            return
+        }
+
+        if (invite.expiresAt != null && invite.expiresAt < System.currentTimeMillis()) {
+            onError("邀请码已过期")
+            return
+        }
+
+        if (invite.maxUses != null && invite.currentUses >= invite.maxUses) {
+            onError("邀请码已达到最大使用次数")
+            return
+        }
+
+        val existingMember = memberRepository.getMember(invite.groupId, userId)
+        if (existingMember != null && existingMember.status == MemberStatus.JOINED) {
+            onError("您已经加入该小组")
+            return
+        }
+
+        if (existingMember == null) {
+            val newMember = GroupMember(
+                groupId = invite.groupId,
+                userId = userId,
+                role = MemberRole.MEMBER,
+                status = MemberStatus.JOINED
+            )
+            memberRepository.insertMember(newMember)
+        } else {
+            memberRepository.updateMemberStatus(
+                invite.groupId,
+                userId,
+                MemberStatus.JOINED
+            )
+        }
+
+        inviteRepository.incrementUseCount(invite.inviteId)
+
+        navController.popBackStack()
+        navController.navigate("group_detail/${invite.groupId}")
+        onError(null)
+    } catch (e: Exception) {
+        onError("加入失败: ${e.message}")
     }
 }
 

@@ -20,15 +20,28 @@ import androidx.room.PrimaryKey
             parentColumns = ["courseId"],
             childColumns = ["courseId"],
             onDelete = ForeignKey.SET_NULL
+        ),
+        ForeignKey(
+            entity = StudyGroup::class,
+            parentColumns = ["groupId"],
+            childColumns = ["groupId"],
+            onDelete = ForeignKey.SET_NULL
         )
     ],
-    indices = [Index(value = ["userId"]), Index(value = ["courseId"]), Index(value = ["dueDate"]), Index(value = ["status"])]
+    indices = [
+        Index(value = ["userId"]),
+        Index(value = ["courseId"]),
+        Index(value = ["groupId"]),
+        Index(value = ["dueDate"]),
+        Index(value = ["status"])
+    ]
 )
 data class Assignment(
     @PrimaryKey(autoGenerate = true)
     val assignmentId: Int = 0,
     val userId: Int,
     val courseId: Int? = null,
+    val groupId: Int? = null,
     val title: String,
     val description: String? = null,
     val type: AssignmentType = AssignmentType.HOMEWORK,
@@ -43,8 +56,7 @@ data class Assignment(
 
 enum class AssignmentType {
     HOMEWORK, // 作业
-    EXPERIMENT, // 实验
-    OTHER // 其他
+    EXPERIMENT // 实验
 }
 
 enum class AssignmentStatus {

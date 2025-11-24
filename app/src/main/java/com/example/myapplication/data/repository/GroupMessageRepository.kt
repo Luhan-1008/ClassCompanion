@@ -7,6 +7,12 @@ import kotlinx.coroutines.flow.Flow
 class GroupMessageRepository(private val groupMessageDao: GroupMessageDao) {
     fun getMessagesByGroup(groupId: Int): Flow<List<GroupMessage>> =
         groupMessageDao.getMessagesByGroup(groupId)
+
+    suspend fun countMessagesBetween(start: Long, end: Long): Int =
+        groupMessageDao.countMessagesBetween(start, end)
+
+    suspend fun searchMessages(keyword: String, limit: Int): List<GroupMessage> =
+        groupMessageDao.searchMessages(keyword, limit)
     
     suspend fun insertMessage(message: GroupMessage): Long =
         groupMessageDao.insertMessage(message)

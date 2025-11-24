@@ -46,6 +46,8 @@ fun GroupDiscoveryScreen(navController: NavHostController) {
     var selectedCourseId by remember { mutableStateOf<Int?>(null) }
     val scope = rememberCoroutineScope()
     val userId = CurrentSession.userIdInt ?: 0
+    val snackbarHostState = remember { SnackbarHostState() }
+    var joiningGroupId by remember { mutableStateOf<Int?>(null) }
     
     // 搜索公开小组
     val groups by remember(searchQuery, selectedCourseId) {
@@ -57,6 +59,7 @@ fun GroupDiscoveryScreen(navController: NavHostController) {
     }.collectAsState(initial = emptyList())
     
     Scaffold(
+        snackbarHost = { SnackbarHost(snackbarHostState) },
         topBar = {
             TopAppBar(
                 title = { 
@@ -158,19 +161,45 @@ fun GroupDiscoveryScreen(navController: NavHostController) {
                         DiscoveredGroupCard(
                             group = group,
                             isJoined = false, // TODO: 检查是否已加入
+                            isJoining = joiningGroupId == group.groupId,
                             onJoinClick = {
+                                if (joiningGroupId == group.groupId) return@DiscoveredGroupCard
                                 scope.launch {
-                                    // 申请加入小组
-                                    val member = com.example.myapplication.data.model.GroupMember(
-                                        groupId = group.groupId,
-                                        userId = userId,
-                                        role = com.example.myapplication.data.model.MemberRole.MEMBER,
-                                        status = MemberStatus.PENDING
-                                    )
-                                    memberRepository.insertMember(member)
-                                    
-                                    // 显示提示
-                                    // TODO: 使用Snackbar显示提示
+                                    joiningGroupId = group.groupId
+                                    try {
+                                        val existing = memberRepository.getMember(group.groupId, userId)
+                                        when {
+                                            existing == null -> {
+                                                memberRepository.insertMember(
+                                                    com.example.myapplication.data.model.GroupMember(
+                                                        groupId = group.groupId,
+                                                        userId = userId,
+                                                        role = com.example.myapplication.data.model.MemberRole.MEMBER,
+                                                        status = MemberStatus.PENDING
+                                                    )
+                                                )
+                                                snackbarHostState.showSnackbar("已向管理员发送加入申请")
+                                            }
+                                            existing.status == MemberStatus.JOINED -> {
+                                                    snackbarHostState.showSnackbar("您已经是该小组成员")
+                                            }
+                                            existing.status == MemberStatus.PENDING -> {
+                                                snackbarHostState.showSnackbar("申请已在审核中")
+                                            }
+                                            else -> {
+                                                memberRepository.updateMemberStatus(
+                                                    group.groupId,
+                                                    userId,
+                                                    MemberStatus.PENDING
+                                                )
+                                                snackbarHostState.showSnackbar("已重新提交申请")
+                                            }
+                                        }
+                                    } catch (e: Exception) {
+                                        snackbarHostState.showSnackbar("申请失败：${e.message}")
+                                    } finally {
+                                        joiningGroupId = null
+                                    }
                                 }
                             },
                             onViewClick = {
@@ -188,6 +217,7 @@ fun GroupDiscoveryScreen(navController: NavHostController) {
 fun DiscoveredGroupCard(
     group: com.example.myapplication.data.model.StudyGroup,
     isJoined: Boolean,
+    isJoining: Boolean,
     onJoinClick: () -> Unit,
     onViewClick: () -> Unit
 ) {
@@ -227,6 +257,12 @@ fun DiscoveredGroupCard(
                             fontWeight = FontWeight.Bold,
                             color = MaterialTheme.colorScheme.onSurface
                         )
+                        if (!group.isPublic) {
+                            AssistChip(
+                                onClick = {},
+                                label = { Text("私密", style = MaterialTheme.typography.labelSmall) }
+                            )
+                        }
                     }
                     if (!group.description.isNullOrEmpty()) {
                         Spacer(modifier = Modifier.height(8.dp))
@@ -257,11 +293,20 @@ fun DiscoveredGroupCard(
                 if (!isJoined) {
                     Button(
                         onClick = onJoinClick,
+                        enabled = !isJoining,
                         colors = ButtonDefaults.buttonColors(
                             containerColor = MaterialTheme.colorScheme.primary
                         )
                     ) {
-                        Text("申请加入")
+                        if (isJoining) {
+                            CircularProgressIndicator(
+                                modifier = Modifier.size(18.dp),
+                                color = Color.White,
+                                strokeWidth = 2.dp
+                            )
+                        } else {
+                            Text("申请加入")
+                        }
                     }
                 } else {
                     TextButton(onClick = onViewClick) {

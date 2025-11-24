@@ -8,12 +8,12 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowBack
-import androidx.compose.material.icons.filled.ArrowDropDown
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
@@ -25,7 +25,6 @@ import com.example.myapplication.data.database.AppDatabase
 import com.example.myapplication.data.model.Assignment
 import com.example.myapplication.data.model.AssignmentType
 import com.example.myapplication.data.model.Priority
-import com.example.myapplication.data.model.Course
 import com.example.myapplication.data.repository.AssignmentRepository
 import com.example.myapplication.data.repository.CourseRepository
 import com.example.myapplication.ui.components.showDateTimePicker
@@ -50,10 +49,13 @@ fun AddAssignmentScreen(navController: NavHostController) {
     val viewModel: AssignmentViewModel = viewModel(
         factory = AssignmentViewModelFactory(repository)
     )
-    
+
     val scope = rememberCoroutineScope()
     val userId = com.example.myapplication.session.CurrentSession.userIdInt ?: 0
-    val courses by courseRepository.getCoursesByUser(userId).collectAsState(initial = emptyList())
+    // 参照CreateGroupScreen的方式，直接使用Flow获取课程列表
+    val courses by remember(userId) {
+        courseRepository.getCoursesByUser(userId)
+    }.collectAsState(initial = emptyList())
     
     var title by remember { mutableStateOf("") }
     var description by remember { mutableStateOf("") }
@@ -138,28 +140,95 @@ fun AddAssignmentScreen(navController: NavHostController) {
                             shape = RoundedCornerShape(12.dp)
                         )
                         
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Column(modifier = Modifier.weight(1f)) {
+                                Text(
+                                    text = "任务类型",
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                                Row(
+                                    modifier = Modifier.padding(top = 4.dp),
+                                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                ) {
+                                    AssignmentType.values().forEach { assignmentType ->
+                                        val isSelected = type == assignmentType
+                                        val displayName = when (assignmentType) {
+                                            AssignmentType.HOMEWORK -> "作业"
+                                            AssignmentType.EXPERIMENT -> "实验"
+                                        }
+                                        AssistChip(
+                                            onClick = { type = assignmentType },
+                                            label = { Text(displayName, style = MaterialTheme.typography.labelSmall) },
+                                            colors = AssistChipDefaults.assistChipColors(
+                                                containerColor = if (isSelected) 
+                                                    MaterialTheme.colorScheme.primaryContainer 
+                                                else 
+                                                    MaterialTheme.colorScheme.surfaceVariant
+                                            )
+                                        )
+                                    }
+                                }
+                            }
+                            Column(modifier = Modifier.weight(1f)) {
+                                Text(
+                                    text = "优先级",
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                                Row(
+                                    modifier = Modifier.padding(top = 4.dp),
+                                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                ) {
+                                    Priority.values().forEach { priorityOption ->
+                                        val isSelected = priority == priorityOption
+                                        val displayName = when (priorityOption) {
+                                            Priority.LOW -> "低"
+                                            Priority.MEDIUM -> "中"
+                                            Priority.HIGH -> "高"
+                                        }
+                                        AssistChip(
+                                            onClick = { priority = priorityOption },
+                                            label = { Text(displayName, style = MaterialTheme.typography.labelSmall) },
+                                            colors = AssistChipDefaults.assistChipColors(
+                                                containerColor = if (isSelected) 
+                                                    MaterialTheme.colorScheme.secondaryContainer 
+                                                else 
+                                                    MaterialTheme.colorScheme.surfaceVariant
+                                            )
+                                        )
+                                    }
+                                }
+                            }
+                        }
+
                         OutlinedTextField(
                             value = description,
                             onValueChange = { description = it },
                             label = { Text("任务描述") },
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .height(120.dp),
-                            maxLines = 5,
+                                .height(80.dp),
+                            maxLines = 3,
                             shape = RoundedCornerShape(12.dp)
                         )
                         
-                        // 关联课程选择
+                        // 关联课程 & 学习小组
                         Text(
                             text = "关联课程（可选）",
                             style = MaterialTheme.typography.labelLarge,
                             modifier = Modifier.padding(top = 8.dp, bottom = 4.dp)
                         )
-                        val selectedCourse = courses.find { it.courseId == selectedCourseId }
+                        // 参照CreateGroupScreen使用ExposedDropdownMenuBox
                         ExposedDropdownMenuBox(
                             expanded = showCourseDropdown,
                             onExpandedChange = { showCourseDropdown = !showCourseDropdown }
                         ) {
+                            val selectedCourse = courses.find { it.courseId == selectedCourseId }
                             OutlinedTextField(
                                 value = selectedCourse?.courseName ?: "未选择课程",
                                 onValueChange = { },
@@ -199,7 +268,7 @@ fun AddAssignmentScreen(navController: NavHostController) {
                         Divider(modifier = Modifier.padding(vertical = 8.dp))
 
                         Text(
-                            text = "截止时间",
+                            text = "截止时间 & 提醒",
                             style = MaterialTheme.typography.labelLarge,
                             modifier = Modifier.padding(bottom = 4.dp)
                         )
@@ -210,33 +279,123 @@ fun AddAssignmentScreen(navController: NavHostController) {
                                 containerColor = MaterialTheme.colorScheme.surfaceVariant
                             )
                         ) {
-                            Row(
+                            Column(
                                 modifier = Modifier
                                     .fillMaxWidth()
                                     .padding(16.dp),
-                                horizontalArrangement = Arrangement.SpaceBetween,
-                                verticalAlignment = Alignment.CenterVertically
+                                verticalArrangement = Arrangement.spacedBy(16.dp)
                             ) {
-                                Column {
-                                    Text(
-                                        text = dueDateDisplay,
-                                        style = MaterialTheme.typography.titleMedium,
-                                        fontWeight = FontWeight.Bold
-                                    )
-                                    Text(
-                                        text = "请选择准确的截止日期和时间",
-                                        style = MaterialTheme.typography.bodySmall,
-                                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.SpaceBetween,
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Column(
+                                        modifier = Modifier
+                                            .weight(1f)
+                                            .clickable {
+                                                showDateTimePicker(context, dueDate) { selected ->
+                                                    dueDate = selected
+                                                }
+                                            }
+                                            .padding(vertical = 8.dp)
+                                    ) {
+                                        Text(
+                                            text = dueDateDisplay,
+                                            style = MaterialTheme.typography.titleMedium,
+                                            fontWeight = FontWeight.Bold
+                                        )
+                                        Text(
+                                            text = "点击选择截止日期和时间",
+                                            style = MaterialTheme.typography.bodySmall,
+                                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                                        )
+                                    }
+                                    TextButton(
+                                        onClick = {
+                                            showDateTimePicker(context, dueDate) { selected ->
+                                                dueDate = selected
+                                            }
+                                        }
+                                    ) {
+                                        Text("调整")
+                                    }
+                                }
+
+                                Divider()
+
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.SpaceBetween,
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Column {
+                                        Text("启用提醒", style = MaterialTheme.typography.titleSmall)
+                                        Text(
+                                            text = "自定义首次/紧急提醒时间",
+                                            style = MaterialTheme.typography.bodySmall,
+                                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                                        )
+                                    }
+                                    Switch(
+                                        checked = reminderEnabled,
+                                        onCheckedChange = { reminderEnabled = it },
+                                        colors = SwitchDefaults.colors(
+                                            checkedThumbColor = MaterialTheme.colorScheme.primary,
+                                            checkedTrackColor = MaterialTheme.colorScheme.primaryContainer
+                                        )
                                     )
                                 }
-                                FilledTonalButton(
-                                    onClick = {
-                                        showDateTimePicker(context, dueDate) { selected ->
-                                            dueDate = selected
+
+                                if (reminderEnabled) {
+                                    Column(
+                                        verticalArrangement = Arrangement.spacedBy(12.dp)
+                                    ) {
+                                        Column {
+                                            Text(
+                                                text = "首次提醒（提前天数）",
+                                                style = MaterialTheme.typography.bodyMedium
+                                            )
+                                            Row(
+                                                verticalAlignment = Alignment.CenterVertically,
+                                                horizontalArrangement = Arrangement.spacedBy(12.dp)
+                                            ) {
+                                                Slider(
+                                                    value = firstReminderDays.toFloat(),
+                                                    onValueChange = { firstReminderDays = it.toInt() },
+                                                    valueRange = 1f..7f,
+                                                    steps = 6,
+                                                    modifier = Modifier.weight(1f)
+                                                )
+                                                Text(
+                                                    text = "${firstReminderDays}天",
+                                                    fontWeight = FontWeight.Bold
+                                                )
+                                            }
+                                        }
+                                        Column {
+                                            Text(
+                                                text = "紧急提醒（提前小时）",
+                                                style = MaterialTheme.typography.bodyMedium
+                                            )
+                                            Row(
+                                                verticalAlignment = Alignment.CenterVertically,
+                                                horizontalArrangement = Arrangement.spacedBy(12.dp)
+                                            ) {
+                                                Slider(
+                                                    value = urgentReminderHours.toFloat(),
+                                                    onValueChange = { urgentReminderHours = it.toInt() },
+                                                    valueRange = 1f..24f,
+                                                    steps = 23,
+                                                    modifier = Modifier.weight(1f)
+                                                )
+                                                Text(
+                                                    text = "${urgentReminderHours}小时",
+                                                    fontWeight = FontWeight.Bold
+                                                )
+                                            }
                                         }
                                     }
-                                ) {
-                                    Text("调整")
                                 }
                             }
                         }
@@ -267,223 +426,6 @@ fun AddAssignmentScreen(navController: NavHostController) {
                     }
                 }
                 
-                // 类型和优先级卡片
-                Card(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .shadow(4.dp, shape = RoundedCornerShape(16.dp)),
-                    shape = RoundedCornerShape(16.dp),
-                    colors = CardDefaults.cardColors(
-                        containerColor = MaterialTheme.colorScheme.surface
-                    )
-                ) {
-                    Column(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(20.dp),
-                        verticalArrangement = Arrangement.spacedBy(16.dp)
-                    ) {
-                        Text(
-                            text = "分类设置",
-                            style = MaterialTheme.typography.titleLarge,
-                            fontWeight = FontWeight.Bold,
-                            color = MaterialTheme.colorScheme.primary
-                        )
-                        
-                        Text(
-                            text = "任务类型",
-                            style = MaterialTheme.typography.labelLarge,
-                            fontWeight = FontWeight.Medium,
-                            modifier = Modifier.padding(bottom = 8.dp)
-                        )
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.spacedBy(12.dp)
-                        ) {
-                            AssignmentType.values().forEach { assignmentType ->
-                                val isSelected = type == assignmentType
-                                val displayName = when (assignmentType) {
-                                    AssignmentType.HOMEWORK -> "作业"
-                                    AssignmentType.EXPERIMENT -> "实验"
-                                    AssignmentType.OTHER -> "其他"
-                                }
-                                FilterChip(
-                                    selected = isSelected,
-                                    onClick = { type = assignmentType },
-                                    label = { 
-                                        Text(
-                                            displayName,
-                                            style = MaterialTheme.typography.labelMedium,
-                                            fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium
-                                        ) 
-                                    },
-                                    modifier = Modifier.weight(1f),
-                                    shape = RoundedCornerShape(12.dp),
-                                    colors = FilterChipDefaults.filterChipColors(
-                                        selectedContainerColor = MaterialTheme.colorScheme.primary,
-                                        selectedLabelColor = Color.White,
-                                        containerColor = MaterialTheme.colorScheme.surfaceVariant,
-                                        labelColor = MaterialTheme.colorScheme.onSurfaceVariant
-                                    ),
-                                    border = FilterChipDefaults.filterChipBorder(
-                                        enabled = true,
-                                        selected = isSelected,
-                                        selectedBorderColor = MaterialTheme.colorScheme.primary,
-                                        borderColor = MaterialTheme.colorScheme.outline.copy(alpha = 0.3f),
-                                        selectedBorderWidth = 2.dp,
-                                        borderWidth = 1.dp
-                                    )
-                                )
-                            }
-                        }
-                        
-                        Spacer(modifier = Modifier.height(8.dp))
-                        
-                        Text(
-                            text = "优先级",
-                            style = MaterialTheme.typography.labelLarge,
-                            fontWeight = FontWeight.Medium,
-                            modifier = Modifier.padding(bottom = 8.dp)
-                        )
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.spacedBy(12.dp)
-                        ) {
-                            Priority.values().forEach { priorityOption ->
-                                val isSelected = priority == priorityOption
-                                val displayName = when (priorityOption) {
-                                    Priority.LOW -> "低"
-                                    Priority.MEDIUM -> "中"
-                                    Priority.HIGH -> "高"
-                                }
-                                FilterChip(
-                                    selected = isSelected,
-                                    onClick = { priority = priorityOption },
-                                    label = { 
-                                        Text(
-                                            displayName,
-                                            style = MaterialTheme.typography.labelMedium,
-                                            fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium
-                                        ) 
-                                    },
-                                    modifier = Modifier.weight(1f),
-                                    shape = RoundedCornerShape(12.dp),
-                                    colors = FilterChipDefaults.filterChipColors(
-                                        selectedContainerColor = MaterialTheme.colorScheme.secondary,
-                                        selectedLabelColor = Color.White,
-                                        containerColor = MaterialTheme.colorScheme.surfaceVariant,
-                                        labelColor = MaterialTheme.colorScheme.onSurfaceVariant
-                                    ),
-                                    border = FilterChipDefaults.filterChipBorder(
-                                        enabled = true,
-                                        selected = isSelected,
-                                        selectedBorderColor = MaterialTheme.colorScheme.secondary,
-                                        borderColor = MaterialTheme.colorScheme.outline.copy(alpha = 0.3f),
-                                        selectedBorderWidth = 2.dp,
-                                        borderWidth = 1.dp
-                                    )
-                                )
-                            }
-                        }
-                    }
-                }
-                
-                // 提醒设置卡片
-                Card(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .shadow(4.dp, shape = RoundedCornerShape(16.dp)),
-                    shape = RoundedCornerShape(16.dp),
-                    colors = CardDefaults.cardColors(
-                        containerColor = MaterialTheme.colorScheme.surface
-                    )
-                ) {
-                    Column(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(20.dp),
-                        verticalArrangement = Arrangement.spacedBy(16.dp)
-                    ) {
-                        Text(
-                            text = "提醒设置",
-                            style = MaterialTheme.typography.titleLarge,
-                            fontWeight = FontWeight.Bold,
-                            color = MaterialTheme.colorScheme.primary
-                        )
-                        
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.SpaceBetween,
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            Text(
-                                text = "启用提醒",
-                                style = MaterialTheme.typography.bodyLarge
-                            )
-                            Switch(
-                                checked = reminderEnabled,
-                                onCheckedChange = { reminderEnabled = it },
-                                colors = SwitchDefaults.colors(
-                                    checkedThumbColor = MaterialTheme.colorScheme.primary,
-                                    checkedTrackColor = MaterialTheme.colorScheme.primaryContainer
-                                )
-                            )
-                        }
-                        
-                        if (reminderEnabled) {
-                            Spacer(modifier = Modifier.height(8.dp))
-                            Text(
-                                text = "首次提醒（提前天数）",
-                                style = MaterialTheme.typography.bodyMedium,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant
-                            )
-                            Row(
-                                modifier = Modifier.fillMaxWidth(),
-                                horizontalArrangement = Arrangement.spacedBy(8.dp),
-                                verticalAlignment = Alignment.CenterVertically
-                            ) {
-                                Slider(
-                                    value = firstReminderDays.toFloat(),
-                                    onValueChange = { firstReminderDays = it.toInt() },
-                                    valueRange = 1f..7f,
-                                    steps = 6,
-                                    modifier = Modifier.weight(1f)
-                                )
-                                Text(
-                                    text = "${firstReminderDays}天",
-                                    style = MaterialTheme.typography.bodyMedium,
-                                    fontWeight = FontWeight.Bold
-                                )
-                            }
-                            
-                            Spacer(modifier = Modifier.height(8.dp))
-                            Text(
-                                text = "紧急提醒（提前小时）",
-                                style = MaterialTheme.typography.bodyMedium,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant
-                            )
-                            Row(
-                                modifier = Modifier.fillMaxWidth(),
-                                horizontalArrangement = Arrangement.spacedBy(8.dp),
-                                verticalAlignment = Alignment.CenterVertically
-                            ) {
-                                Slider(
-                                    value = urgentReminderHours.toFloat(),
-                                    onValueChange = { urgentReminderHours = it.toInt() },
-                                    valueRange = 1f..24f,
-                                    steps = 23,
-                                    modifier = Modifier.weight(1f)
-                                )
-                                Text(
-                                    text = "${urgentReminderHours}小时",
-                                    style = MaterialTheme.typography.bodyMedium,
-                                    fontWeight = FontWeight.Bold
-                                )
-                            }
-                        }
-                    }
-                }
-                
                 Spacer(modifier = Modifier.height(8.dp))
                 
                 Button(
@@ -505,6 +447,7 @@ fun AddAssignmentScreen(navController: NavHostController) {
                                 val assignment = Assignment(
                                     userId = userId,
                                     courseId = selectedCourseId,
+                                    groupId = null,
                                     title = title,
                                     description = description.ifBlank { null },
                                     type = type,

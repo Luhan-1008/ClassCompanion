@@ -48,6 +48,7 @@ fun GroupAnnouncementScreen(
     val announcements by viewModel.announcements.collectAsState()
     val userId = CurrentSession.userIdInt ?: 0
     val scope = rememberCoroutineScope()
+    val snackbarHostState = remember { SnackbarHostState() }
     
     // 检查用户权限
     var userRole by remember { mutableStateOf<MemberRole?>(null) }
@@ -59,8 +60,15 @@ fun GroupAnnouncementScreen(
     }
     
     val canCreate = userRole == MemberRole.CREATOR || userRole == MemberRole.ADMIN
+    var showCreateDialog by remember { mutableStateOf(false) }
+    var newTitle by remember { mutableStateOf("") }
+    var newContent by remember { mutableStateOf("") }
+    var pinToTop by remember { mutableStateOf(false) }
+    var titleError by remember { mutableStateOf(false) }
+    var contentError by remember { mutableStateOf(false) }
     
     Scaffold(
+        snackbarHost = { SnackbarHost(snackbarHostState) },
         topBar = {
             TopAppBar(
                 title = { 
@@ -79,7 +87,9 @@ fun GroupAnnouncementScreen(
                     if (canCreate) {
                         IconButton(
                             onClick = {
-                                // TODO: 打开创建公告对话框
+                                showCreateDialog = true
+                                titleError = false
+                                contentError = false
                             }
                         ) {
                             Icon(Icons.Default.Add, contentDescription = "发布公告")
@@ -147,6 +157,101 @@ fun GroupAnnouncementScreen(
                 }
             }
         }
+    }
+
+    if (showCreateDialog) {
+        AlertDialog(
+            onDismissRequest = {
+                showCreateDialog = false
+            },
+            title = { Text("发布公告") },
+            text = {
+                Column(
+                    verticalArrangement = Arrangement.spacedBy(12.dp)
+                ) {
+                    OutlinedTextField(
+                        value = newTitle,
+                        onValueChange = {
+                            newTitle = it
+                            if (titleError && it.isNotBlank()) titleError = false
+                        },
+                        label = { Text("标题") },
+                        singleLine = true,
+                        isError = titleError
+                    )
+                    if (titleError) {
+                        Text(
+                            text = "标题不能为空",
+                            color = MaterialTheme.colorScheme.error,
+                            style = MaterialTheme.typography.bodySmall
+                        )
+                    }
+                    OutlinedTextField(
+                        value = newContent,
+                        onValueChange = {
+                            newContent = it
+                            if (contentError && it.isNotBlank()) contentError = false
+                        },
+                        label = { Text("内容") },
+                        modifier = Modifier.height(150.dp),
+                        maxLines = 6,
+                        isError = contentError
+                    )
+                    if (contentError) {
+                        Text(
+                            text = "内容不能为空",
+                            color = MaterialTheme.colorScheme.error,
+                            style = MaterialTheme.typography.bodySmall
+                        )
+                    }
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text("置顶显示", style = MaterialTheme.typography.bodyLarge)
+                        Switch(
+                            checked = pinToTop,
+                            onCheckedChange = { pinToTop = it }
+                        )
+                    }
+                }
+            },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        val trimmedTitle = newTitle.trim()
+                        val trimmedContent = newContent.trim()
+                        titleError = trimmedTitle.isEmpty()
+                        contentError = trimmedContent.isEmpty()
+                        if (titleError || contentError) return@Button
+                        scope.launch {
+                            viewModel.createAnnouncement(
+                                GroupAnnouncement(
+                                    groupId = groupId,
+                                    authorId = userId,
+                                    title = trimmedTitle,
+                                    content = trimmedContent,
+                                    isPinned = pinToTop
+                                )
+                            )
+                            snackbarHostState.showSnackbar("公告已发布")
+                            newTitle = ""
+                            newContent = ""
+                            pinToTop = false
+                            showCreateDialog = false
+                        }
+                    }
+                ) {
+                    Text("发布")
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showCreateDialog = false }) {
+                    Text("取消")
+                }
+            }
+        )
     }
 }
 

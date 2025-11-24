@@ -22,13 +22,10 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.navigation.NavHostController
 import com.example.myapplication.data.database.AppDatabase
-import com.example.myapplication.data.model.Assignment
-import com.example.myapplication.data.model.Course
 import com.example.myapplication.data.model.GroupMember
-import com.example.myapplication.data.model.MemberStatus
 import com.example.myapplication.data.model.MemberRole
-import com.example.myapplication.data.repository.AssignmentRepository
-import com.example.myapplication.data.repository.CourseRepository
+import com.example.myapplication.data.model.MemberStatus
+import com.example.myapplication.data.model.User
 import com.example.myapplication.data.repository.GroupMemberRepository
 import com.example.myapplication.data.repository.StudyGroupRepository
 import com.example.myapplication.data.repository.UserRepository
@@ -56,8 +53,6 @@ fun GroupDetailScreen(navController: NavHostController, groupId: Int?) {
     val database = AppDatabase.getDatabase(context)
     val groupRepository = StudyGroupRepository(database.studyGroupDao())
     val memberRepository = GroupMemberRepository(database.groupMemberDao())
-    val courseRepository = CourseRepository(database.courseDao())
-    val assignmentRepository = AssignmentRepository(database.assignmentDao())
     val userRepository = UserRepository(database.userDao())
     val viewModel: StudyGroupViewModel = viewModel(
         factory = StudyGroupViewModelFactory(groupRepository)
@@ -65,13 +60,29 @@ fun GroupDetailScreen(navController: NavHostController, groupId: Int?) {
     
     val userId = CurrentSession.userIdInt ?: 0
     var group by remember { mutableStateOf<com.example.myapplication.data.model.StudyGroup?>(null) }
-    var relatedCourse by remember { mutableStateOf<Course?>(null) }
-    var relatedTask by remember { mutableStateOf<Assignment?>(null) }
     val members by remember(groupId) {
         memberRepository.getMembersByGroup(groupId, MemberStatus.JOINED)
     }.collectAsState(initial = emptyList())
+    val pendingMembers by remember(groupId) {
+        memberRepository.getMembersByGroup(groupId, MemberStatus.PENDING)
+    }.collectAsState(initial = emptyList())
     val scope = rememberCoroutineScope()
     val snackbarHostState = remember { SnackbarHostState() }
+
+    val memberProfiles by produceState<Map<Int, User>>(
+        initialValue = emptyMap(),
+        key1 = members,
+        key2 = pendingMembers
+    ) {
+        val ids = (members + pendingMembers).map { it.userId }.distinct()
+        val map = mutableMapOf<Int, User>()
+        withContext(Dispatchers.IO) {
+            ids.forEach { id ->
+                userRepository.getUserById(id)?.let { map[id] = it }
+            }
+        }
+        value = map
+    }
     var showInviteDialog by remember { mutableStateOf(false) }
     var inviteInput by remember { mutableStateOf("") }
     var inviteDialogError by remember { mutableStateOf<String?>(null) }
@@ -87,17 +98,6 @@ fun GroupDetailScreen(navController: NavHostController, groupId: Int?) {
     val isCreator = remember(group, userId) { group?.creatorId == userId }
     val isAdmin = remember(currentMember) { currentMember?.role == MemberRole.ADMIN }
     val canInvite = remember(isCreator, isAdmin) { isCreator || isAdmin }
-    
-    LaunchedEffect(group?.courseId) {
-        relatedCourse = group?.courseId?.let { courseId ->
-            withContext(Dispatchers.IO) { courseRepository.getCourseById(courseId) }
-        }
-    }
-    LaunchedEffect(group?.taskId) {
-        relatedTask = group?.taskId?.let { taskId ->
-            withContext(Dispatchers.IO) { assignmentRepository.getAssignmentById(taskId) }
-        }
-    }
     
     Scaffold(
         snackbarHost = { SnackbarHost(snackbarHostState) },
@@ -120,22 +120,6 @@ fun GroupDetailScreen(navController: NavHostController, groupId: Int?) {
                     titleContentColor = MaterialTheme.colorScheme.onSurface
                 )
             )
-        },
-        floatingActionButton = {
-            if (canInvite) {
-                FloatingActionButton(
-                    onClick = {
-                        navController.navigate("group_invite/$groupId")
-                    },
-                    containerColor = MaterialTheme.colorScheme.primary
-                ) {
-                    Icon(
-                        imageVector = Icons.Default.PersonAdd,
-                        contentDescription = "邀请成员",
-                        tint = Color.White
-                    )
-                }
-            }
         }
     ) { padding ->
         Column(
@@ -150,15 +134,6 @@ fun GroupDetailScreen(navController: NavHostController, groupId: Int?) {
                 contentPadding = PaddingValues(16.dp),
                 verticalArrangement = Arrangement.spacedBy(12.dp)
             ) {
-                group?.let {
-                    item {
-                        GroupAssociationCard(
-                            course = relatedCourse,
-                            task = relatedTask
-                        )
-                    }
-                }
-                
                 item {
                     // 群聊入口
                     FeatureCard(
@@ -229,6 +204,27 @@ fun GroupDetailScreen(navController: NavHostController, groupId: Int?) {
                     )
                 }
                 
+                if (canInvite && pendingMembers.isNotEmpty()) {
+                    item {
+                        PendingRequestSection(
+                            pendingMembers = pendingMembers,
+                            memberProfiles = memberProfiles,
+                            onApprove = { member ->
+                                scope.launch {
+                                    memberRepository.updateMemberStatus(member.groupId, member.userId, MemberStatus.JOINED)
+                                    snackbarHostState.showSnackbar("已通过 ${memberProfiles[member.userId]?.username ?: "申请人"}")
+                                }
+                            },
+                            onReject = { member ->
+                                scope.launch {
+                                    memberRepository.updateMemberStatus(member.groupId, member.userId, MemberStatus.LEFT)
+                                    snackbarHostState.showSnackbar("已拒绝申请")
+                                }
+                            }
+                        )
+                    }
+                }
+                
                 item {
                     // 成员列表
                     Card(
@@ -282,6 +278,9 @@ fun GroupDetailScreen(navController: NavHostController, groupId: Int?) {
                             sortedMembers.forEach { member ->
                                 MemberItem(
                                     member = member,
+                                    displayName = memberProfiles[member.userId]?.realName
+                                        ?: memberProfiles[member.userId]?.username
+                                        ?: "用户 ${member.userId}",
                                     currentUserId = userId,
                                     currentUserRole = currentMember?.role,
                                     onRoleChange = { newRole ->
@@ -503,47 +502,9 @@ fun FeatureCard(
 }
 
 @Composable
-fun GroupAssociationCard(
-    course: Course?,
-    task: Assignment?
-) {
-    Card(
-        modifier = Modifier
-            .fillMaxWidth()
-            .shadow(4.dp, shape = RoundedCornerShape(16.dp)),
-        shape = RoundedCornerShape(16.dp),
-        colors = CardDefaults.cardColors(
-            containerColor = MaterialTheme.colorScheme.surface
-        )
-    ) {
-        Column(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(16.dp),
-            verticalArrangement = Arrangement.spacedBy(12.dp)
-        ) {
-            Text(
-                text = "关联信息",
-                style = MaterialTheme.typography.titleLarge,
-                fontWeight = FontWeight.Bold
-            )
-            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                Text(
-                    text = "关联课程：${course?.courseName ?: "未设置"}",
-                    style = MaterialTheme.typography.bodyMedium
-                )
-                Text(
-                    text = "关联任务：${task?.title ?: "未设置"}",
-                    style = MaterialTheme.typography.bodyMedium
-                )
-            }
-        }
-    }
-}
-
-@Composable
 fun MemberItem(
     member: com.example.myapplication.data.model.GroupMember,
+    displayName: String,
     currentUserId: Int,
     currentUserRole: MemberRole?,
     onRoleChange: (MemberRole) -> Unit,
@@ -584,7 +545,7 @@ fun MemberItem(
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 Text(
-                    text = "用户 ${member.userId}",
+                    text = displayName,
                     style = MaterialTheme.typography.bodyLarge,
                     fontWeight = FontWeight.Medium
                 )
@@ -665,6 +626,72 @@ fun MemberItem(
                             Icon(Icons.Default.Delete, contentDescription = null, tint = MaterialTheme.colorScheme.error)
                         }
                     )
+                }
+            }
+        }
+    }
+}
+
+@Composable
+fun PendingRequestSection(
+    pendingMembers: List<GroupMember>,
+    memberProfiles: Map<Int, User>,
+    onApprove: (GroupMember) -> Unit,
+    onReject: (GroupMember) -> Unit
+) {
+    Card(
+        modifier = Modifier
+            .fillMaxWidth()
+            .shadow(4.dp, shape = RoundedCornerShape(16.dp)),
+        shape = RoundedCornerShape(16.dp),
+        colors = CardDefaults.cardColors(
+            containerColor = MaterialTheme.colorScheme.surface
+        )
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(16.dp),
+            verticalArrangement = Arrangement.spacedBy(12.dp)
+        ) {
+            Text(
+                text = "待处理申请",
+                style = MaterialTheme.typography.titleLarge,
+                fontWeight = FontWeight.Bold
+            )
+            pendingMembers.forEach { member ->
+                val profile = memberProfiles[member.userId]
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text(
+                            text = profile?.realName ?: profile?.username ?: "用户 ${member.userId}",
+                            style = MaterialTheme.typography.bodyLarge,
+                            fontWeight = FontWeight.Medium
+                        )
+                        Text(
+                            text = "ID: ${member.userId}",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        OutlinedButton(
+                            onClick = { onReject(member) },
+                            shape = RoundedCornerShape(10.dp)
+                        ) {
+                            Text("拒绝")
+                        }
+                        Button(
+                            onClick = { onApprove(member) },
+                            shape = RoundedCornerShape(10.dp)
+                        ) {
+                            Text("通过")
+                        }
+                    }
                 }
             }
         }

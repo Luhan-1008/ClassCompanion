@@ -174,3 +174,51 @@ CREATE TABLE IF NOT EXISTS `notifications` (
   INDEX `idx_created_at` (`created_at`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='通知提醒表';
 
+-- 课程评价表
+CREATE TABLE IF NOT EXISTS `course_reviews` (
+  `review_id` INT PRIMARY KEY AUTO_INCREMENT,
+  `course_id` INT NOT NULL,
+  `user_id` INT NOT NULL,
+  `rating` TINYINT NOT NULL,
+  `difficulty` ENUM('EASY','MEDIUM','HARD') DEFAULT 'MEDIUM',
+  `workload_hours_per_week` INT DEFAULT 4,
+  `highlight_tags` VARCHAR(255) DEFAULT '',
+  `comment` TEXT NOT NULL,
+  `suggestion` TEXT,
+  `created_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  FOREIGN KEY (`course_id`) REFERENCES `courses`(`course_id`) ON DELETE CASCADE,
+  FOREIGN KEY (`user_id`) REFERENCES `users`(`user_id`) ON DELETE CASCADE,
+  INDEX `idx_course_id` (`course_id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='课程评价表';
+
+-- 课程资料共享表
+CREATE TABLE IF NOT EXISTS `course_resources` (
+  `resource_id` INT PRIMARY KEY AUTO_INCREMENT,
+  `course_id` INT NOT NULL,
+  `user_id` INT NOT NULL,
+  `title` VARCHAR(200) NOT NULL,
+  `description` TEXT,
+  `resource_url` VARCHAR(255) NOT NULL,
+  `resource_type` ENUM('NOTE','PPT','PRACTICE','VIDEO','DISCUSSION','OTHER') DEFAULT 'NOTE',
+  `created_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  FOREIGN KEY (`course_id`) REFERENCES `courses`(`course_id`) ON DELETE CASCADE,
+  FOREIGN KEY (`user_id`) REFERENCES `users`(`user_id`) ON DELETE CASCADE,
+  INDEX `idx_course_id` (`course_id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='课程资料共享表';
+
+-- 学习时长记录表
+CREATE TABLE IF NOT EXISTS `study_sessions` (
+  `session_id` INT PRIMARY KEY AUTO_INCREMENT,
+  `user_id` INT NOT NULL,
+  `course_id` INT,
+  `session_type` ENUM('PREVIEW','REVIEW','ASSIGNMENT','DISCUSSION','EXAM_PREP') DEFAULT 'REVIEW',
+  `duration_minutes` INT NOT NULL,
+  `session_date` BIGINT NOT NULL,
+  `focus_topic` VARCHAR(200),
+  `quality_score` TINYINT DEFAULT 4,
+  FOREIGN KEY (`user_id`) REFERENCES `users`(`user_id`) ON DELETE CASCADE,
+  FOREIGN KEY (`course_id`) REFERENCES `courses`(`course_id`) ON DELETE SET NULL,
+  INDEX `idx_user_id` (`user_id`),
+  INDEX `idx_course_id` (`course_id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='学习时长记录表';
+

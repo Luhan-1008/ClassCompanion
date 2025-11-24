@@ -1,9 +1,11 @@
 package com.example.myapplication.utils
 
 import com.example.myapplication.data.model.Course
-import org.apache.poi.ss.usermodel.WorkbookFactory
-import org.apache.poi.ss.usermodel.Sheet
 import org.apache.poi.ss.usermodel.Row
+import org.apache.poi.ss.usermodel.Sheet
+import org.apache.poi.ss.usermodel.WorkbookFactory
+import org.apache.poi.xssf.usermodel.XSSFWorkbook
+import java.io.ByteArrayOutputStream
 import java.io.InputStream
 
 /**
@@ -246,6 +248,53 @@ object CourseImportParser {
             "$name,$code,$teacher,$location,$dayStr,${course.startTime},${course.endTime},${course.startWeek},${course.endWeek}"
         }
         return header + content
+    }
+
+    /**
+     * 导出课程为 Excel (.xlsx) 格式
+     */
+    fun exportCoursesToExcel(courses: List<Course>): ByteArray {
+        val headers = listOf("课程名称", "课程代码", "教师", "地点", "星期", "开始时间", "结束时间", "开始周", "结束周")
+        val workbook = XSSFWorkbook()
+        val sheet = workbook.createSheet("课程表")
+
+        // 表头
+        val headerRow = sheet.createRow(0)
+        headers.forEachIndexed { index, title ->
+            headerRow.createCell(index).setCellValue(title)
+        }
+
+        // 数据行
+        courses.forEachIndexed { rowIndex, course ->
+            val row = sheet.createRow(rowIndex + 1)
+            row.createCell(0).setCellValue(course.courseName)
+            row.createCell(1).setCellValue(course.courseCode ?: "")
+            row.createCell(2).setCellValue(course.teacherName ?: "")
+            row.createCell(3).setCellValue(course.location ?: "")
+            row.createCell(4).setCellValue(
+                when (course.dayOfWeek) {
+                    1 -> "周一"
+                    2 -> "周二"
+                    3 -> "周三"
+                    4 -> "周四"
+                    5 -> "周五"
+                    6 -> "周六"
+                    7 -> "周日"
+                    else -> course.dayOfWeek.toString()
+                }
+            )
+            row.createCell(5).setCellValue(course.startTime)
+            row.createCell(6).setCellValue(course.endTime)
+            row.createCell(7).setCellValue(course.startWeek.toDouble())
+            row.createCell(8).setCellValue(course.endWeek.toDouble())
+        }
+
+        headers.indices.forEach { sheet.autoSizeColumn(it) }
+
+        return ByteArrayOutputStream().use { output ->
+            workbook.use { it.write(output) }
+            output.toByteArray()
+        }
     }
     
     private fun escapeCsv(value: String): String {

@@ -11,6 +11,8 @@ class CourseRepository(private val courseDao: CourseDao) {
         courseDao.getCoursesByDay(userId, dayOfWeek)
     
     suspend fun getCourseById(courseId: Int): Course? = courseDao.getCourseById(courseId)
+
+    suspend fun getCoursesSnapshot(userId: Int): List<Course> = courseDao.getCoursesSnapshot(userId)
     
     suspend fun insertCourse(course: Course): Long = courseDao.insertCourse(course)
     

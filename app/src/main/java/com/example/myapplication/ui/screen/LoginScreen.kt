@@ -30,6 +30,7 @@ import com.example.myapplication.ui.navigation.Screen
 import com.example.myapplication.ui.viewmodel.AuthResult
 import com.example.myapplication.ui.viewmodel.UserViewModel
 import com.example.myapplication.ui.viewmodel.UserViewModelFactory
+import com.example.myapplication.work.ReminderScheduler
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -54,6 +55,7 @@ fun LoginScreen(navController: NavHostController) {
     LaunchedEffect(loginResult) {
         when (loginResult) {
             is AuthResult.Success -> {
+                ReminderScheduler.schedule(context.applicationContext)
                 navController.navigate(Screen.CourseSchedule.route) {
                     popUpTo(Screen.Login.route) { inclusive = true }
                 }

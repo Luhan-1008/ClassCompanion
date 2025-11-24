@@ -16,9 +16,15 @@ interface AssignmentDao {
     @Query("SELECT * FROM assignments WHERE userId = :userId AND courseId = :courseId ORDER BY dueDate ASC")
     fun getAssignmentsByCourse(userId: Int, courseId: Int): Flow<List<Assignment>>
     
+    @Query("SELECT * FROM assignments WHERE groupId = :groupId ORDER BY dueDate ASC")
+    fun getAssignmentsByGroup(groupId: Int): Flow<List<Assignment>>
+    
     @Query("SELECT * FROM assignments WHERE assignmentId = :assignmentId")
     suspend fun getAssignmentById(assignmentId: Int): Assignment?
     
+    @Query("SELECT * FROM assignments WHERE userId = :userId ORDER BY dueDate ASC")
+    suspend fun getAssignmentsSnapshot(userId: Int): List<Assignment>
+
     @Query("SELECT * FROM assignments WHERE userId = :userId AND dueDate <= :timestamp AND status != :completedStatus ORDER BY dueDate ASC")
     fun getUpcomingAssignments(userId: Int, timestamp: Long, completedStatus: AssignmentStatus): Flow<List<Assignment>>
     

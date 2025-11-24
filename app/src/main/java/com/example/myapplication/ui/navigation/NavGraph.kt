@@ -107,6 +107,12 @@ fun NavGraph(navController: NavHostController) {
         composable("learning_analytics") {
             com.example.myapplication.ui.screen.LearningAnalyticsScreen(navController = navController)
         }
+        composable("smart_planner") {
+            com.example.myapplication.ui.screen.SmartPlannerScreen(navController = navController)
+        }
+        composable("course_community") {
+            com.example.myapplication.ui.screen.CourseCommunityScreen(navController = navController)
+        }
     }
 }
 

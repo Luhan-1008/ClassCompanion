@@ -266,15 +266,10 @@ fun CourseDetailDialog(
         text = {
             Column(
                 modifier = Modifier.fillMaxWidth(),
-                verticalArrangement = Arrangement.spacedBy(12.dp)
+                verticalArrangement = Arrangement.spacedBy(10.dp)
             ) {
                 // 课程名称
                 InfoRow("课程名称", course.courseName)
-                
-                // 课程编号（可选）
-                if (!course.courseCode.isNullOrEmpty()) {
-                    InfoRow("课程编号", course.courseCode)
-                }
                 
                 // 教师
                 if (!course.teacherName.isNullOrEmpty()) {
@@ -294,7 +289,22 @@ fun CourseDetailDialog(
                         horizontalArrangement = Arrangement.SpaceBetween,
                         verticalAlignment = Alignment.CenterVertically
                     ) {
-                        InfoRow("上课地点", course.location)
+                        Column(
+                            modifier = Modifier.weight(1f),
+                            verticalArrangement = Arrangement.spacedBy(2.dp)
+                        ) {
+                            Text(
+                                text = "上课地点",
+                                style = MaterialTheme.typography.bodyMedium,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                fontWeight = FontWeight.Medium
+                            )
+                            Text(
+                                text = course.location,
+                                style = MaterialTheme.typography.bodyMedium,
+                                color = MaterialTheme.colorScheme.onSurface
+                            )
+                        }
                         TextButton(
                             onClick = {
                                 openMapNavigation(context, course.location)

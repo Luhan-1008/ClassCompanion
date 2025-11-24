@@ -20,9 +20,12 @@ import com.example.myapplication.data.model.*
         GroupTask::class,
         GroupInvite::class,
         Note::class,
-        Notification::class
+        Notification::class,
+        CourseReview::class,
+        CourseResource::class,
+        StudySession::class
     ],
-    version = 5,
+    version = 7,
     exportSchema = false
 )
 abstract class AppDatabase : RoomDatabase() {
@@ -37,6 +40,9 @@ abstract class AppDatabase : RoomDatabase() {
     abstract fun groupTaskDao(): GroupTaskDao
     abstract fun groupInviteDao(): GroupInviteDao
     abstract fun notificationDao(): NotificationDao
+    abstract fun courseReviewDao(): CourseReviewDao
+    abstract fun courseResourceDao(): CourseResourceDao
+    abstract fun studySessionDao(): StudySessionDao
     
     companion object {
         @Volatile

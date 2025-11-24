@@ -15,8 +15,10 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.navigation.NavHostController
@@ -32,6 +34,7 @@ import com.google.zxing.qrcode.QRCodeWriter
 import com.google.zxing.common.BitMatrix
 import kotlinx.coroutines.launch
 import java.util.*
+import android.content.Intent
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -50,8 +53,11 @@ fun GroupInviteScreen(
     val currentInvite by viewModel.currentInvite.collectAsState()
     val userId = CurrentSession.userIdInt ?: 0
     val scope = rememberCoroutineScope()
+    val clipboardManager = LocalClipboardManager.current
+    val snackbarHostState = remember { SnackbarHostState() }
     
     Scaffold(
+        snackbarHost = { SnackbarHost(snackbarHostState) },
         topBar = {
             TopAppBar(
                 title = { 
@@ -97,10 +103,17 @@ fun GroupInviteScreen(
                 InviteCodeCard(
                     invite = invite,
                     onCopy = {
-                        // TODO: 复制到剪贴板
+                        clipboardManager.setText(AnnotatedString(invite.inviteCode))
+                        scope.launch {
+                            snackbarHostState.showSnackbar("邀请码已复制")
+                        }
                     },
                     onShare = {
-                        // TODO: 分享邀请码
+                        val intent = Intent(Intent.ACTION_SEND).apply {
+                            type = "text/plain"
+                            putExtra(Intent.EXTRA_TEXT, "加入我的学习小组：邀请码 ${invite.inviteCode}")
+                        }
+                        context.startActivity(Intent.createChooser(intent, "分享邀请码"))
                     },
                     onDelete = {
                         scope.launch {

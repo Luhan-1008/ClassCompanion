@@ -37,7 +37,6 @@ fun AddCourseScreen(navController: NavHostController) {
     )
     
     var courseName by remember { mutableStateOf("") }
-    var courseCode by remember { mutableStateOf("") }
     var teacherName by remember { mutableStateOf("") }
     var location by remember { mutableStateOf("") }
     var dayOfWeek by remember { mutableStateOf(1) }
@@ -126,15 +125,6 @@ fun AddCourseScreen(navController: NavHostController) {
                             value = courseName,
                             onValueChange = { courseName = it },
                             label = { Text("课程名称 *") },
-                            modifier = Modifier.fillMaxWidth(),
-                            singleLine = true,
-                            shape = RoundedCornerShape(12.dp)
-                        )
-                        
-                        OutlinedTextField(
-                            value = courseCode,
-                            onValueChange = { courseCode = it },
-                            label = { Text("课程代码") },
                             modifier = Modifier.fillMaxWidth(),
                             singleLine = true,
                             shape = RoundedCornerShape(12.dp)
@@ -371,7 +361,6 @@ fun AddCourseScreen(navController: NavHostController) {
                                     Course(
                                         userId = 0, // 这会触发错误处理
                                         courseName = courseName,
-                                        courseCode = courseCode.ifBlank { null },
                                         teacherName = teacherName.ifBlank { null },
                                         location = location.ifBlank { null },
                                         dayOfWeek = dayOfWeek,
@@ -390,7 +379,6 @@ fun AddCourseScreen(navController: NavHostController) {
                             val course = Course(
                                 userId = currentUserId,
                                 courseName = courseName,
-                                courseCode = courseCode.ifBlank { null },
                                 teacherName = teacherName.ifBlank { null },
                                 location = location.ifBlank { null },
                                 dayOfWeek = dayOfWeek,

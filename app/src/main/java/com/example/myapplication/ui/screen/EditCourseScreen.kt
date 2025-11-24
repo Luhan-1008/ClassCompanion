@@ -57,7 +57,6 @@ fun EditCourseScreen(navController: NavHostController, courseId: Int?) {
     }
     
     var courseName by remember { mutableStateOf(course!!.courseName) }
-    var courseCode by remember { mutableStateOf(course!!.courseCode ?: "") }
     var teacherName by remember { mutableStateOf(course!!.teacherName ?: "") }
     var location by remember { mutableStateOf(course!!.location ?: "") }
     var dayOfWeek by remember { mutableStateOf(course!!.dayOfWeek) }
@@ -132,15 +131,6 @@ fun EditCourseScreen(navController: NavHostController, courseId: Int?) {
                             value = courseName,
                             onValueChange = { courseName = it },
                             label = { Text("课程名称 *") },
-                            modifier = Modifier.fillMaxWidth(),
-                            singleLine = true,
-                            shape = RoundedCornerShape(12.dp)
-                        )
-                        
-                        OutlinedTextField(
-                            value = courseCode,
-                            onValueChange = { courseCode = it },
-                            label = { Text("课程代码") },
                             modifier = Modifier.fillMaxWidth(),
                             singleLine = true,
                             shape = RoundedCornerShape(12.dp)
@@ -342,7 +332,7 @@ fun EditCourseScreen(navController: NavHostController, courseId: Int?) {
                         if (courseName.isNotBlank()) {
                             val updatedCourse = course!!.copy(
                                 courseName = courseName,
-                                courseCode = courseCode.ifBlank { null },
+                                courseCode = course!!.courseCode,
                                 teacherName = teacherName.ifBlank { null },
                                 location = location.ifBlank { null },
                                 dayOfWeek = dayOfWeek,

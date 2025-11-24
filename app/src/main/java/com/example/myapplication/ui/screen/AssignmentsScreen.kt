@@ -1,6 +1,7 @@
 package com.example.myapplication.ui.screen
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -28,6 +29,7 @@ import com.example.myapplication.data.model.AssignmentStatus
 import com.example.myapplication.data.model.Priority
 import com.example.myapplication.data.repository.AssignmentRepository
 import com.example.myapplication.data.repository.CourseRepository
+import com.example.myapplication.data.repository.StudyGroupRepository
 import com.example.myapplication.session.CurrentSession
 import com.example.myapplication.ui.navigation.Screen
 import com.example.myapplication.ui.viewmodel.AssignmentViewModel
@@ -46,6 +48,7 @@ fun AssignmentsScreen(
     val database = AppDatabase.getDatabase(context)
     val repository = AssignmentRepository(database.assignmentDao())
     val courseRepository = CourseRepository(database.courseDao())
+    val groupRepository = StudyGroupRepository(database.studyGroupDao())
     val viewModel: AssignmentViewModel = viewModel(
         factory = AssignmentViewModelFactory(repository)
     )
@@ -55,7 +58,11 @@ fun AssignmentsScreen(
     val courses by remember(userId) {
         courseRepository.getCoursesByUser(userId)
     }.collectAsState(initial = emptyList())
+    val groups by remember(userId) {
+        groupRepository.getGroupsByUser(userId)
+    }.collectAsState(initial = emptyList())
     val courseMap = remember(courses) { courses.associateBy { it.courseId } }
+    val groupMap = remember(groups) { groups.associateBy { it.groupId } }
     var selectedStatus by remember { mutableStateOf<AssignmentStatus?>(null) }
     var searchText by remember { mutableStateOf("") }
     var courseFilter by remember(initialCourseId) { mutableStateOf(initialCourseId) }
@@ -68,7 +75,7 @@ fun AssignmentsScreen(
         )
     }
     
-    val filteredAssignments = remember(assignments, searchText, courseFilter, courseMap) {
+    val filteredAssignments = remember(assignments, searchText, courseFilter, courseMap, selectedStatus) {
         val query = searchText.trim().lowercase()
         assignments
             .filter { assignment ->
@@ -98,24 +105,20 @@ fun AssignmentsScreen(
                         fontWeight = FontWeight.Bold
                     )
                 },
+                actions = {
+                    IconButton(onClick = { navController.navigate(Screen.AddAssignment.route) }) {
+                        Icon(
+                            imageVector = Icons.Default.Add,
+                            contentDescription = "添加任务"
+                        )
+                    }
+                },
                 colors = TopAppBarDefaults.topAppBarColors(
                     containerColor = MaterialTheme.colorScheme.surface,
                     titleContentColor = MaterialTheme.colorScheme.onSurface
                 ),
                 modifier = Modifier.shadow(2.dp)
             )
-        },
-        floatingActionButton = {
-            ExtendedFloatingActionButton(
-                onClick = { navController.navigate(Screen.AddAssignment.route) },
-                containerColor = MaterialTheme.colorScheme.primary,
-                contentColor = Color.White,
-                modifier = Modifier.shadow(8.dp, shape = RoundedCornerShape(16.dp))
-            ) {
-                Icon(Icons.Default.Add, contentDescription = "添加任务")
-                Spacer(modifier = Modifier.width(8.dp))
-                Text("添加任务")
-            }
         }
     ) { padding ->
         Column(
@@ -227,7 +230,7 @@ fun AssignmentsScreen(
                                     color = MaterialTheme.colorScheme.onSurfaceVariant
                                 )
                                 Text(
-                                    text = "点击右下角按钮添加任务",
+                                    text = "点击右上角加号添加任务",
                                     style = MaterialTheme.typography.bodySmall,
                                     color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f)
                                 )
@@ -237,9 +240,11 @@ fun AssignmentsScreen(
                 } else {
                     items(filteredAssignments) { assignment ->
                         val courseName = courseMap[assignment.courseId]?.courseName
+                        val groupName = groupMap[assignment.groupId]?.groupName
                         AssignmentCard(
                             assignment = assignment,
                             courseName = courseName,
+                            groupName = groupName,
                             onEdit = {
                                 navController.navigate("${Screen.EditAssignment.route}/${assignment.assignmentId}")
                             },
@@ -270,6 +275,7 @@ fun AssignmentsScreen(
 fun AssignmentCard(
     assignment: com.example.myapplication.data.model.Assignment,
     courseName: String?,
+    groupName: String?,
     onEdit: () -> Unit,
     onDelete: () -> Unit,
     onStatusChange: (AssignmentStatus) -> Unit,
@@ -302,7 +308,8 @@ fun AssignmentCard(
     Card(
         modifier = Modifier
             .fillMaxWidth()
-            .shadow(4.dp, shape = RoundedCornerShape(16.dp)),
+            .shadow(4.dp, shape = RoundedCornerShape(16.dp))
+            .clickable { onEdit() },
         shape = RoundedCornerShape(16.dp),
         colors = CardDefaults.cardColors(
             containerColor = MaterialTheme.colorScheme.surface
@@ -331,6 +338,11 @@ fun AssignmentCard(
                 )
                 
                 Column(modifier = Modifier.weight(1f)) {
+                    val displayTitle = if (courseName != null) {
+                        "${assignment.title}（$courseName）"
+                    } else {
+                        assignment.title
+                    }
                     Row(
                         verticalAlignment = Alignment.CenterVertically,
                         horizontalArrangement = Arrangement.spacedBy(8.dp)
@@ -340,7 +352,7 @@ fun AssignmentCard(
                             style = MaterialTheme.typography.titleLarge
                         )
                         Text(
-                            text = assignment.title,
+                            text = displayTitle,
                             style = MaterialTheme.typography.titleLarge,
                             fontWeight = FontWeight.Bold,
                             color = MaterialTheme.colorScheme.onSurface
@@ -363,15 +375,14 @@ fun AssignmentCard(
                         )
                     }
                     
-                    // 关联课程显示
-                    if (courseName != null) {
+                    if (groupName != null) {
                         Spacer(modifier = Modifier.height(8.dp))
                         Surface(
-                            color = MaterialTheme.colorScheme.tertiaryContainer.copy(alpha = 0.3f),
+                            color = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.25f),
                             shape = RoundedCornerShape(8.dp)
                         ) {
                             Text(
-                                text = "📚 $courseName",
+                                text = "👥 $groupName",
                                 modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
                                 style = MaterialTheme.typography.bodySmall,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant
@@ -414,7 +425,6 @@ fun AssignmentCard(
                                     when (assignment.type) {
                                         com.example.myapplication.data.model.AssignmentType.HOMEWORK -> "作业"
                                         com.example.myapplication.data.model.AssignmentType.EXPERIMENT -> "实验"
-                                        com.example.myapplication.data.model.AssignmentType.OTHER -> "其他"
                                     },
                                     style = MaterialTheme.typography.labelSmall
                                 ) 
@@ -522,13 +532,6 @@ fun AssignmentCard(
                         onClick = {
                             showMenu = false
                             onEdit()
-                        }
-                    )
-                    DropdownMenuItem(
-                        text = { Text("标记为完成") },
-                        onClick = {
-                            showMenu = false
-                            onStatusChange(AssignmentStatus.COMPLETED)
                         }
                     )
                     DropdownMenuItem(

@@ -64,6 +64,11 @@ enum class ScheduleViewType {
     SEMESTER // 学期视图
 }
 
+private enum class CourseExportFormat(val label: String) {
+    CSV("CSV"),
+    EXCEL("Excel")
+}
+
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun CourseScheduleScreen(navController: NavHostController) {
@@ -84,25 +89,50 @@ fun CourseScheduleScreen(navController: NavHostController) {
     var showImportDialog by remember { mutableStateOf(false) }
     var showTemplateDialog by remember { mutableStateOf(false) }
     var showExportDialog by remember { mutableStateOf(false) }
+    var exportFormat by remember { mutableStateOf(CourseExportFormat.CSV) }
+    var pendingExportFormat by remember { mutableStateOf(CourseExportFormat.CSV) }
     var importResult by remember { mutableStateOf<String?>(null) }
     val scope = rememberCoroutineScope()
     val userId = CurrentSession.userIdInt ?: 0
     
     // 导出功能
-    fun exportCourses(share: Boolean) {
+    fun exportCourses(share: Boolean, format: CourseExportFormat) {
         scope.launch {
             try {
-                val csvContent = withContext(Dispatchers.IO) {
-                    CourseImportParser.exportCoursesToCsv(courses)
+                if (courses.isEmpty()) {
+                    importResult = "当前没有课程可导出"
+                    showImportDialog = true
+                    return@launch
+                }
+                val exportPayload = withContext(Dispatchers.IO) {
+                    val timestamp = System.currentTimeMillis()
+                    when (format) {
+                        CourseExportFormat.CSV -> {
+                            val content = CourseImportParser.exportCoursesToCsv(courses).toByteArray()
+                            Triple(
+                                "Course_Schedule_${timestamp}.csv",
+                                "text/csv",
+                                content
+                            )
+                        }
+                        CourseExportFormat.EXCEL -> {
+                            val content = CourseImportParser.exportCoursesToExcel(courses)
+                            Triple(
+                                "Course_Schedule_${timestamp}.xlsx",
+                                "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                                content
+                            )
+                        }
+                    }
                 }
                 
-                val fileName = "Course_Schedule_${System.currentTimeMillis()}.csv"
+                val (fileName, mimeType, bytes) = exportPayload
                 
                 if (share) {
                     // 分享文件
                     val file = File(context.cacheDir, fileName)
                     withContext(Dispatchers.IO) {
-                        file.writeText(csvContent)
+                        file.writeBytes(bytes)
                     }
                     
                     val uri = FileProvider.getUriForFile(
@@ -112,7 +142,7 @@ fun CourseScheduleScreen(navController: NavHostController) {
                     )
                     
                     val intent = Intent(Intent.ACTION_SEND).apply {
-                        type = "text/csv"
+                        type = mimeType
                         putExtra(Intent.EXTRA_STREAM, uri)
                         addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
                     }
@@ -123,13 +153,13 @@ fun CourseScheduleScreen(navController: NavHostController) {
                     if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.Q) {
                         val contentValues = ContentValues().apply {
                             put(MediaStore.MediaColumns.DISPLAY_NAME, fileName)
-                            put(MediaStore.MediaColumns.MIME_TYPE, "text/csv")
+                            put(MediaStore.MediaColumns.MIME_TYPE, mimeType)
                             put(MediaStore.MediaColumns.RELATIVE_PATH, Environment.DIRECTORY_DOWNLOADS)
                         }
                         val uri = context.contentResolver.insert(MediaStore.Downloads.EXTERNAL_CONTENT_URI, contentValues)
                         uri?.let {
                             context.contentResolver.openOutputStream(it)?.use { stream ->
-                                stream.write(csvContent.toByteArray())
+                                stream.write(bytes)
                             }
                             importResult = "已保存到下载目录"
                             showImportDialog = true
@@ -142,7 +172,7 @@ fun CourseScheduleScreen(navController: NavHostController) {
                         val sdCardDir = Environment.getExternalStorageDirectory()
                         val file = File(sdCardDir, fileName)
                         withContext(Dispatchers.IO) {
-                            file.writeText(csvContent)
+                            file.writeBytes(bytes)
                         }
                         importResult = "已保存到SD卡: ${file.absolutePath}"
                         showImportDialog = true
@@ -161,7 +191,7 @@ fun CourseScheduleScreen(navController: NavHostController) {
         contract = ActivityResultContracts.RequestPermission()
     ) { isGranted: Boolean ->
         if (isGranted) {
-            exportCourses(share = false)
+            exportCourses(share = false, format = pendingExportFormat)
         } else {
             importResult = "需要存储权限才能保存到SD卡"
             showImportDialog = true
@@ -257,22 +287,11 @@ fun CourseScheduleScreen(navController: NavHostController) {
         topBar = {
             TopAppBar(
                 title = { 
-                    Column {
-                        Text(
-                            text = "课程表",
-                            style = MaterialTheme.typography.headlineSmall,
-                            fontWeight = FontWeight.Bold
-                        )
-                        Text(
-                            text = when(viewType) {
-                                ScheduleViewType.DAY -> weekDays[selectedDay - 1]
-                                ScheduleViewType.WEEK -> "周视图"
-                                ScheduleViewType.SEMESTER -> "学期视图"
-                            },
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-                    }
+                    Text(
+                        text = "课程表",
+                        style = MaterialTheme.typography.headlineSmall,
+                        fontWeight = FontWeight.Bold
+                    )
                 },
                 actions = {
                     // 导入按钮
@@ -524,10 +543,27 @@ fun CourseScheduleScreen(navController: NavHostController) {
                     Column(
                         verticalArrangement = Arrangement.spacedBy(8.dp)
                     ) {
+                        Text(
+                            text = "导出格式",
+                            style = MaterialTheme.typography.bodyMedium
+                        )
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            CourseExportFormat.values().forEach { formatOption ->
+                                FilterChip(
+                                    selected = exportFormat == formatOption,
+                                    onClick = { exportFormat = formatOption },
+                                    label = { Text(formatOption.label) }
+                                )
+                            }
+                        }
+                        
                         OutlinedButton(
                             onClick = {
                                 showExportDialog = false
-                                exportCourses(share = true)
+                                exportCourses(share = true, format = exportFormat)
                             },
                             modifier = Modifier.fillMaxWidth()
                         ) {
@@ -541,12 +577,13 @@ fun CourseScheduleScreen(navController: NavHostController) {
                                 showExportDialog = false
                                 if (android.os.Build.VERSION.SDK_INT < android.os.Build.VERSION_CODES.Q) {
                                     if (ContextCompat.checkSelfPermission(context, Manifest.permission.WRITE_EXTERNAL_STORAGE) == PackageManager.PERMISSION_GRANTED) {
-                                        exportCourses(share = false)
+                                        exportCourses(share = false, format = exportFormat)
                                     } else {
+                                        pendingExportFormat = exportFormat
                                         permissionLauncher.launch(Manifest.permission.WRITE_EXTERNAL_STORAGE)
                                     }
                                 } else {
-                                    exportCourses(share = false)
+                                    exportCourses(share = false, format = exportFormat)
                                 }
                             },
                             modifier = Modifier.fillMaxWidth()

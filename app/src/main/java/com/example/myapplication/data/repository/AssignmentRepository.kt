@@ -15,8 +15,14 @@ class AssignmentRepository(private val assignmentDao: AssignmentDao) {
     fun getAssignmentsByCourse(userId: Int, courseId: Int): Flow<List<Assignment>> = 
         assignmentDao.getAssignmentsByCourse(userId, courseId)
     
+    fun getAssignmentsByGroup(groupId: Int): Flow<List<Assignment>> =
+        assignmentDao.getAssignmentsByGroup(groupId)
+    
     fun getUpcomingAssignments(userId: Int, timestamp: Long): Flow<List<Assignment>> = 
         assignmentDao.getUpcomingAssignments(userId, timestamp, AssignmentStatus.COMPLETED)
+
+    suspend fun getAssignmentsSnapshot(userId: Int): List<Assignment> =
+        assignmentDao.getAssignmentsSnapshot(userId)
     
     suspend fun getAssignmentById(assignmentId: Int): Assignment? = 
         assignmentDao.getAssignmentById(assignmentId)
