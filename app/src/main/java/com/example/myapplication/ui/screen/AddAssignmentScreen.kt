@@ -32,12 +32,6 @@ import com.example.myapplication.ui.viewmodel.AssignmentViewModel
 import com.example.myapplication.ui.viewmodel.AssignmentViewModelFactory
 import java.text.SimpleDateFormat
 import java.util.*
-import androidx.work.OneTimeWorkRequestBuilder
-import androidx.work.WorkManager
-import androidx.work.workDataOf
-import java.util.concurrent.TimeUnit
-import com.example.myapplication.work.AssignmentNotificationWorker
-import kotlinx.coroutines.launch
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -49,8 +43,7 @@ fun AddAssignmentScreen(navController: NavHostController) {
     val viewModel: AssignmentViewModel = viewModel(
         factory = AssignmentViewModelFactory(repository)
     )
-
-    val scope = rememberCoroutineScope()
+    
     val userId = com.example.myapplication.session.CurrentSession.userIdInt ?: 0
     // 参照CreateGroupScreen的方式，直接使用Flow获取课程列表
     val courses by remember(userId) {
@@ -431,74 +424,30 @@ fun AddAssignmentScreen(navController: NavHostController) {
                 Button(
                     onClick = {
                         if (title.isNotBlank()) {
-                            scope.launch {
-                                val progressValue = progress.toInt()
-                                val initialStatus = when {
-                                    progressValue >= 100 -> com.example.myapplication.data.model.AssignmentStatus.COMPLETED
-                                    progressValue > 0 -> com.example.myapplication.data.model.AssignmentStatus.IN_PROGRESS
-                                    else -> com.example.myapplication.data.model.AssignmentStatus.NOT_STARTED
-                                }
-                                
-                                val reminderTimeValue = if (reminderEnabled) {
+                            val progressValue = progress.toInt()
+                            val initialStatus = when {
+                                progressValue >= 100 -> com.example.myapplication.data.model.AssignmentStatus.COMPLETED
+                                progressValue > 0 -> com.example.myapplication.data.model.AssignmentStatus.IN_PROGRESS
+                                else -> com.example.myapplication.data.model.AssignmentStatus.NOT_STARTED
+                            }
+                            val assignment = Assignment(
+                                userId = userId,
+                                courseId = selectedCourseId,
+                                title = title,
+                                description = description.ifBlank { null },
+                                type = type,
+                                dueDate = dueDate.time,
+                                reminderEnabled = reminderEnabled,
+                                reminderTime = if (reminderEnabled) {
                                     // 首次提醒时间：提前N天
                                     dueDate.time - firstReminderDays * 24 * 60 * 60 * 1000L
-                                } else null
-
-                                val assignment = Assignment(
-                                    userId = userId,
-                                    courseId = selectedCourseId,
-                                    groupId = null,
-                                    title = title,
-                                    description = description.ifBlank { null },
-                                    type = type,
-                                    dueDate = dueDate.time,
-                                    reminderEnabled = reminderEnabled,
-                                    reminderTime = reminderTimeValue,
-                                    status = initialStatus,
-                                    priority = priority,
-                                    progress = progressValue
-                                )
-                                
-                                val assignmentId = viewModel.insertAssignment(assignment)
-                                
-                                if (reminderEnabled) {
-                                    val currentTime = System.currentTimeMillis()
-                                    
-                                    // --- 测试功能：添加一个10秒后的提醒 ---
-                                    val testDelay = 10 * 1000L
-                                    val testWorkRequest = OneTimeWorkRequestBuilder<AssignmentNotificationWorker>()
-                                        .setInitialDelay(testDelay, TimeUnit.MILLISECONDS)
-                                        .setInputData(workDataOf("assignment_id" to assignmentId))
-                                        .build()
-                                    WorkManager.getInstance(context).enqueue(testWorkRequest)
-                                    // -----------------------------------
-
-                                    // 首次提醒
-                                    if (reminderTimeValue != null) {
-                                        val delay = reminderTimeValue - currentTime
-                                        if (delay > 0) {
-                                            val workRequest = OneTimeWorkRequestBuilder<AssignmentNotificationWorker>()
-                                                .setInitialDelay(delay, TimeUnit.MILLISECONDS)
-                                                .setInputData(workDataOf("assignment_id" to assignmentId))
-                                                .build()
-                                            WorkManager.getInstance(context).enqueue(workRequest)
-                                        }
-                                    }
-                                    
-                                    // 紧急提醒
-                                    val urgentTime = dueDate.time - urgentReminderHours * 60 * 60 * 1000L
-                                    val urgentDelay = urgentTime - currentTime
-                                    if (urgentDelay > 0) {
-                                         val urgentWorkRequest = OneTimeWorkRequestBuilder<AssignmentNotificationWorker>()
-                                            .setInitialDelay(urgentDelay, TimeUnit.MILLISECONDS)
-                                            .setInputData(workDataOf("assignment_id" to assignmentId))
-                                            .build()
-                                        WorkManager.getInstance(context).enqueue(urgentWorkRequest)
-                                    }
-                                }
-                                
-                                navController.popBackStack()
-                            }
+                                } else null,
+                                status = initialStatus,
+                                priority = priority,
+                                progress = progressValue
+                            )
+                            viewModel.insertAssignment(assignment)
+                            navController.popBackStack()
                         }
                     },
                     modifier = Modifier

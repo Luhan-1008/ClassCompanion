@@ -40,11 +40,11 @@ fun MyApplicationApp() {
     val showBottomNav = currentRoute != Screen.Login.route && currentRoute != Screen.Register.route
     
     // 获取当前选中的屏幕
-    val currentScreen = when {
-        currentRoute == Screen.CourseSchedule.route -> Screen.CourseSchedule
-        currentRoute?.startsWith(Screen.Assignments.route) == true -> Screen.Assignments
-        currentRoute == Screen.StudyGroups.route -> Screen.StudyGroups
-        currentRoute == Screen.Profile.route -> Screen.Profile
+    val currentScreen = when (currentRoute) {
+        Screen.CourseSchedule.route -> Screen.CourseSchedule
+        Screen.Assignments.route -> Screen.Assignments
+        Screen.StudyGroups.route -> Screen.StudyGroups
+        Screen.Profile.route -> Screen.Profile
         else -> Screen.CourseSchedule
     }
 

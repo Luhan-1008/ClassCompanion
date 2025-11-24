@@ -12,8 +12,8 @@ interface StudyGroupDao {
     @Query("SELECT * FROM study_groups WHERE groupId = :groupId")
     suspend fun getGroupById(groupId: Int): StudyGroup?
     
-    @Query("SELECT * FROM study_groups WHERE isPublic = 1 AND (courseId = :courseId OR topic LIKE :topic)")
-    fun searchPublicGroups(courseId: Int?, topic: String): Flow<List<StudyGroup>>
+    @Query("SELECT * FROM study_groups WHERE isPublic = 1 AND (:courseId IS NULL OR courseId = :courseId) AND (groupName LIKE :query OR topic LIKE :query OR description LIKE :query)")
+    fun searchPublicGroups(courseId: Int?, query: String): Flow<List<StudyGroup>>
     
     @Query("SELECT * FROM study_groups WHERE courseId = :courseId")
     fun getGroupsByCourse(courseId: Int): Flow<List<StudyGroup>>

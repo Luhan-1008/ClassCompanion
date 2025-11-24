@@ -19,5 +19,7 @@ class UserRepository(private val userDao: UserDao) {
     suspend fun updateUser(user: User) = userDao.updateUser(user)
     
     suspend fun usernameExists(username: String): Boolean = userDao.usernameExists(username)
+    
+    suspend fun deleteUser(user: User) = userDao.deleteUser(user)
 }
 

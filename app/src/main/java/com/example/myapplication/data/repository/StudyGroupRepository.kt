@@ -10,8 +10,8 @@ class StudyGroupRepository(private val studyGroupDao: StudyGroupDao) {
     
     suspend fun getGroupById(groupId: Int): StudyGroup? = studyGroupDao.getGroupById(groupId)
     
-    fun searchPublicGroups(courseId: Int?, topic: String): Flow<List<StudyGroup>> = 
-        studyGroupDao.searchPublicGroups(courseId, "%$topic%")
+    fun searchPublicGroups(courseId: Int?, query: String): Flow<List<StudyGroup>> = 
+        studyGroupDao.searchPublicGroups(courseId, if (query.isBlank()) "%%" else "%$query%")
     
     fun getGroupsByCourse(courseId: Int): Flow<List<StudyGroup>> = 
         studyGroupDao.getGroupsByCourse(courseId)

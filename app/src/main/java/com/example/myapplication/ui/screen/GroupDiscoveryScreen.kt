@@ -22,14 +22,24 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.navigation.NavHostController
+import kotlinx.coroutines.flow.combine
 import com.example.myapplication.data.database.AppDatabase
 import com.example.myapplication.data.model.MemberStatus
 import com.example.myapplication.data.repository.GroupMemberRepository
+import com.example.myapplication.data.repository.NotificationRepository
 import com.example.myapplication.data.repository.StudyGroupRepository
+import com.example.myapplication.data.repository.UserRepository
+import com.example.myapplication.data.model.Notification
+import com.example.myapplication.data.model.NotificationType
+import com.example.myapplication.data.model.MemberRole
 import com.example.myapplication.session.CurrentSession
 import com.example.myapplication.ui.viewmodel.StudyGroupViewModel
 import com.example.myapplication.ui.viewmodel.StudyGroupViewModelFactory
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
+import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.map
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -38,6 +48,8 @@ fun GroupDiscoveryScreen(navController: NavHostController) {
     val database = AppDatabase.getDatabase(context)
     val groupRepository = StudyGroupRepository(database.studyGroupDao())
     val memberRepository = GroupMemberRepository(database.groupMemberDao())
+    val notificationRepository = NotificationRepository(database.notificationDao())
+    val userRepository = UserRepository(database.userDao())
     val viewModel: StudyGroupViewModel = viewModel(
         factory = StudyGroupViewModelFactory(groupRepository)
     )
@@ -47,7 +59,6 @@ fun GroupDiscoveryScreen(navController: NavHostController) {
     val scope = rememberCoroutineScope()
     val userId = CurrentSession.userIdInt ?: 0
     val snackbarHostState = remember { SnackbarHostState() }
-    var joiningGroupId by remember { mutableStateOf<Int?>(null) }
     
     // 搜索公开小组
     val groups by remember(searchQuery, selectedCourseId) {
@@ -57,6 +68,12 @@ fun GroupDiscoveryScreen(navController: NavHostController) {
             kotlinx.coroutines.flow.flowOf(emptyList<com.example.myapplication.data.model.StudyGroup>())
         }
     }.collectAsState(initial = emptyList())
+    
+    // 获取用户已加入的小组ID列表
+    val joinedGroupIds by remember(userId) {
+        memberRepository.getGroupsByMember(userId, MemberStatus.JOINED)
+            .map { members -> members.map { it.groupId }.toSet() }
+    }.collectAsState(initial = emptySet())
     
     Scaffold(
         snackbarHost = { SnackbarHost(snackbarHostState) },
@@ -158,47 +175,82 @@ fun GroupDiscoveryScreen(navController: NavHostController) {
                     }
                 } else {
                     items(groups) { group ->
+                        val isJoined = joinedGroupIds.contains(group.groupId)
                         DiscoveredGroupCard(
                             group = group,
-                            isJoined = false, // TODO: 检查是否已加入
-                            isJoining = joiningGroupId == group.groupId,
+                            isJoined = isJoined,
                             onJoinClick = {
-                                if (joiningGroupId == group.groupId) return@DiscoveredGroupCard
                                 scope.launch {
-                                    joiningGroupId = group.groupId
-                                    try {
-                                        val existing = memberRepository.getMember(group.groupId, userId)
-                                        when {
-                                            existing == null -> {
-                                                memberRepository.insertMember(
-                                                    com.example.myapplication.data.model.GroupMember(
-                                                        groupId = group.groupId,
-                                                        userId = userId,
-                                                        role = com.example.myapplication.data.model.MemberRole.MEMBER,
-                                                        status = MemberStatus.PENDING
-                                                    )
-                                                )
-                                                snackbarHostState.showSnackbar("已向管理员发送加入申请")
+                                    // 检查是否已经申请过
+                                    val existingMember = memberRepository.getMember(group.groupId, userId)
+                                    if (existingMember != null) {
+                                        when (existingMember.status) {
+                                            MemberStatus.JOINED -> {
+                                                snackbarHostState.showSnackbar("您已经加入该小组")
                                             }
-                                            existing.status == MemberStatus.JOINED -> {
-                                                    snackbarHostState.showSnackbar("您已经是该小组成员")
-                                            }
-                                            existing.status == MemberStatus.PENDING -> {
-                                                snackbarHostState.showSnackbar("申请已在审核中")
+                                            MemberStatus.PENDING -> {
+                                                snackbarHostState.showSnackbar("您已经申请加入，请等待审核")
                                             }
                                             else -> {
+                                                // 重新申请
                                                 memberRepository.updateMemberStatus(
                                                     group.groupId,
                                                     userId,
                                                     MemberStatus.PENDING
                                                 )
-                                                snackbarHostState.showSnackbar("已重新提交申请")
+                                                snackbarHostState.showSnackbar("已发送加入申请")
                                             }
                                         }
-                                    } catch (e: Exception) {
-                                        snackbarHostState.showSnackbar("申请失败：${e.message}")
-                                    } finally {
-                                        joiningGroupId = null
+                                    } else {
+                                        // 申请加入小组
+                                        val member = com.example.myapplication.data.model.GroupMember(
+                                            groupId = group.groupId,
+                                            userId = userId,
+                                            role = com.example.myapplication.data.model.MemberRole.MEMBER,
+                                            status = MemberStatus.PENDING
+                                        )
+                                        memberRepository.insertMember(member)
+                                        
+                                        // 给创建者和管理员发送通知
+                                        scope.launch(Dispatchers.IO) {
+                                            val applicant = userRepository.getUserById(userId)
+                                            val applicantName = applicant?.username ?: "用户${userId}"
+                                            val groupName = group.groupName
+                                            
+                                            // 给创建者发送通知
+                                            notificationRepository.insertNotification(
+                                                Notification(
+                                                    userId = group.creatorId,
+                                                    type = NotificationType.GROUP_INVITE,
+                                                    title = "加入申请",
+                                                    content = "${applicantName}申请加入小组「${groupName}」",
+                                                    relatedId = group.groupId,
+                                                    isRead = false
+                                                )
+                                            )
+                                            
+                                            // 给所有管理员发送通知
+                                            try {
+                                                val allMembers = memberRepository.getMembersByGroup(group.groupId, MemberStatus.JOINED).first()
+                                                allMembers.filter { it.role == MemberRole.ADMIN }
+                                                    .forEach { admin ->
+                                                        notificationRepository.insertNotification(
+                                                            Notification(
+                                                                userId = admin.userId,
+                                                                type = NotificationType.GROUP_INVITE,
+                                                                title = "加入申请",
+                                                                content = "${applicantName}申请加入小组「${groupName}」",
+                                                                relatedId = group.groupId,
+                                                                isRead = false
+                                                            )
+                                                        )
+                                                    }
+                                            } catch (e: Exception) {
+                                                // 如果获取成员列表失败，只给创建者发送通知
+                                            }
+                                        }
+                                        
+                                        snackbarHostState.showSnackbar("已发送加入申请")
                                     }
                                 }
                             },
@@ -217,7 +269,6 @@ fun GroupDiscoveryScreen(navController: NavHostController) {
 fun DiscoveredGroupCard(
     group: com.example.myapplication.data.model.StudyGroup,
     isJoined: Boolean,
-    isJoining: Boolean,
     onJoinClick: () -> Unit,
     onViewClick: () -> Unit
 ) {
@@ -293,20 +344,11 @@ fun DiscoveredGroupCard(
                 if (!isJoined) {
                     Button(
                         onClick = onJoinClick,
-                        enabled = !isJoining,
                         colors = ButtonDefaults.buttonColors(
                             containerColor = MaterialTheme.colorScheme.primary
                         )
                     ) {
-                        if (isJoining) {
-                            CircularProgressIndicator(
-                                modifier = Modifier.size(18.dp),
-                                color = Color.White,
-                                strokeWidth = 2.dp
-                            )
-                        } else {
-                            Text("申请加入")
-                        }
+                        Text("申请加入")
                     }
                 } else {
                     TextButton(onClick = onViewClick) {

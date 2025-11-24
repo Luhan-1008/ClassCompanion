@@ -217,91 +217,9 @@ object CourseImportParser {
      */
     fun generateCsvTemplate(): String {
         return """课程名称,课程代码,教师,地点,星期,开始时间,结束时间,开始周,结束周
-高等数学,MA001, 张老师,教学楼A101,1,08:00,09:40,1,16
-线性代数,MA002, 李老师,教学楼B201,2,10:00,11:40,1,16
-大学英语,EN001, 王老师,教学楼C301,3,14:00,15:40,1,16"""
-    }
-
-    /**
-     * 导出课程为CSV格式
-     */
-    fun exportCoursesToCsv(courses: List<Course>): String {
-        val header = "课程名称,课程代码,教师,地点,星期,开始时间,结束时间,开始周,结束周\n"
-        val content = courses.joinToString("\n") { course ->
-            val dayStr = when (course.dayOfWeek) {
-                1 -> "周一"
-                2 -> "周二"
-                3 -> "周三"
-                4 -> "周四"
-                5 -> "周五"
-                6 -> "周六"
-                7 -> "周日"
-                else -> course.dayOfWeek.toString()
-            }
-            
-            // 处理可能包含逗号的字段，用引号包裹
-            val name = escapeCsv(course.courseName)
-            val code = escapeCsv(course.courseCode ?: "")
-            val teacher = escapeCsv(course.teacherName ?: "")
-            val location = escapeCsv(course.location ?: "")
-            
-            "$name,$code,$teacher,$location,$dayStr,${course.startTime},${course.endTime},${course.startWeek},${course.endWeek}"
-        }
-        return header + content
-    }
-
-    /**
-     * 导出课程为 Excel (.xlsx) 格式
-     */
-    fun exportCoursesToExcel(courses: List<Course>): ByteArray {
-        val headers = listOf("课程名称", "课程代码", "教师", "地点", "星期", "开始时间", "结束时间", "开始周", "结束周")
-        val workbook = XSSFWorkbook()
-        val sheet = workbook.createSheet("课程表")
-
-        // 表头
-        val headerRow = sheet.createRow(0)
-        headers.forEachIndexed { index, title ->
-            headerRow.createCell(index).setCellValue(title)
-        }
-
-        // 数据行
-        courses.forEachIndexed { rowIndex, course ->
-            val row = sheet.createRow(rowIndex + 1)
-            row.createCell(0).setCellValue(course.courseName)
-            row.createCell(1).setCellValue(course.courseCode ?: "")
-            row.createCell(2).setCellValue(course.teacherName ?: "")
-            row.createCell(3).setCellValue(course.location ?: "")
-            row.createCell(4).setCellValue(
-                when (course.dayOfWeek) {
-                    1 -> "周一"
-                    2 -> "周二"
-                    3 -> "周三"
-                    4 -> "周四"
-                    5 -> "周五"
-                    6 -> "周六"
-                    7 -> "周日"
-                    else -> course.dayOfWeek.toString()
-                }
-            )
-            row.createCell(5).setCellValue(course.startTime)
-            row.createCell(6).setCellValue(course.endTime)
-            row.createCell(7).setCellValue(course.startWeek.toDouble())
-            row.createCell(8).setCellValue(course.endWeek.toDouble())
-        }
-
-        headers.indices.forEach { sheet.autoSizeColumn(it) }
-
-        return ByteArrayOutputStream().use { output ->
-            workbook.use { it.write(output) }
-            output.toByteArray()
-        }
-    }
-    
-    private fun escapeCsv(value: String): String {
-        if (value.contains(",") || value.contains("\"") || value.contains("\n")) {
-            return "\"" + value.replace("\"", "\"\"") + "\""
-        }
-        return value
+高等数学,MA001,张老师,教学楼A101,1,08:00,09:40,1,16
+线性代数,MA002,李老师,教学楼B201,2,10:00,11:40,1,16
+大学英语,EN001,王老师,教学楼C301,3,14:00,15:40,1,16"""
     }
 }
 

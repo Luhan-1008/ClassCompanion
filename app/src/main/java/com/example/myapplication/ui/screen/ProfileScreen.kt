@@ -56,31 +56,40 @@ fun ProfileScreen(navController: NavHostController) {
     val viewModel: UserViewModel = viewModel(
         factory = UserViewModelFactory(repository, remoteRepository)
     )
-
+    
     val currentUser by viewModel.currentUser.collectAsState()
     var showLogoutDialog by remember { mutableStateOf(false) }
+    var isSwitchAccount by remember { mutableStateOf(false) }
+    var showDeleteAccountDialog by remember { mutableStateOf(false) }
     var avatarBitmap by remember { mutableStateOf<ImageBitmap?>(null) }
     val scope = rememberCoroutineScope()
-    val userId = CurrentSession.userIdInt ?: 0
-    val courseDao = remember { database.courseDao() }
-    val assignmentDao = remember { database.assignmentDao() }
-    val groupMemberDao = remember { database.groupMemberDao() }
-    val courses by remember(userId) { courseDao.getCoursesByUser(userId) }.collectAsState(initial = emptyList())
-    val assignments by remember(userId) { assignmentDao.getAssignmentsByUser(userId) }.collectAsState(initial = emptyList())
-    val joinedGroups by remember(userId) { groupMemberDao.getGroupsByMember(userId) }.collectAsState(initial = emptyList())
-
+    
     // 加载当前用户信息
     LaunchedEffect(Unit) {
         viewModel.loadCurrentUser()
     }
-
+    
     // 加载头像
     LaunchedEffect(currentUser?.avatarUrl) {
         scope.launch {
-            avatarBitmap = loadAvatarBitmap(context, currentUser?.avatarUrl)
+            val uriString = currentUser?.avatarUrl
+            if (!uriString.isNullOrBlank()) {
+                try {
+                    val uri = Uri.parse(uriString)
+                    val inputStream = context.contentResolver.openInputStream(uri)
+                    inputStream?.use { stream ->
+                        val bitmap = BitmapFactory.decodeStream(stream)
+                        avatarBitmap = bitmap?.asImageBitmap()
+                    }
+                } catch (e: Exception) {
+                    avatarBitmap = null
+                }
+            } else {
+                avatarBitmap = null
+            }
         }
     }
-
+    
     // 图片选择器
     val imagePickerLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.GetContent()
@@ -91,17 +100,13 @@ fun ProfileScreen(navController: NavHostController) {
                     val inputStream: InputStream? = context.contentResolver.openInputStream(it)
                     inputStream?.use { stream ->
                         val bitmap = BitmapFactory.decodeStream(stream)
-                        if (bitmap != null) {
-                            avatarBitmap = bitmap.asImageBitmap()
-                            val savedPath = withContext(Dispatchers.IO) {
-                                saveAvatarToInternalStorage(context, bitmap, userId)
-                            }
-                            val updatedUser = savedPath?.let { path -> currentUser?.copy(avatarUrl = path) }
-                            if (updatedUser != null) {
-                                withContext(Dispatchers.IO) {
-                                    repository.updateUser(updatedUser)
-                                }
-                                viewModel.loadCurrentUser()
+                        avatarBitmap = bitmap?.asImageBitmap()
+                        
+                        // 保存头像URI到用户信息
+                        val updatedUser = currentUser?.copy(avatarUrl = it.toString())
+                        if (updatedUser != null) {
+                            withContext(Dispatchers.IO) {
+                                repository.updateUser(updatedUser)
                             }
                         }
                     }
@@ -111,11 +116,11 @@ fun ProfileScreen(navController: NavHostController) {
             }
         }
     }
-
+    
     Scaffold(
         topBar = {
             TopAppBar(
-                title = {
+                title = { 
                     Text(
                         text = "我的",
                         style = MaterialTheme.typography.headlineSmall,
@@ -123,7 +128,7 @@ fun ProfileScreen(navController: NavHostController) {
                     )
                 },
                 colors = TopAppBarDefaults.topAppBarColors(
-                    containerColor = MaterialTheme.colorScheme.surface.copy(alpha = 0.8f),
+                    containerColor = MaterialTheme.colorScheme.surface,
                     titleContentColor = MaterialTheme.colorScheme.onSurface
                 ),
                 modifier = Modifier.shadow(2.dp)
@@ -135,21 +140,89 @@ fun ProfileScreen(navController: NavHostController) {
                 .padding(padding)
                 .fillMaxSize()
                 .background(MaterialTheme.colorScheme.background)
-                .verticalScroll(rememberScrollState())
-        ) {
-            ProfileHeaderSection(
-                user = currentUser,
-                avatarBitmap = avatarBitmap,
-                onAvatarClick = { imagePickerLauncher.launch("image/*") },
-                stats = listOf(
-                    "课程" to courses.size,
-                    "作业" to assignments.size,
-                    "小组" to joinedGroups.size
-                )
-            )
-
-            Spacer(modifier = Modifier.height(12.dp))
-
+            // 用户信息卡片
+            Surface(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(16.dp),
+                shape = RoundedCornerShape(16.dp),
+                color = MaterialTheme.colorScheme.surface
+            ) {
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(20.dp),
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    verticalArrangement = Arrangement.spacedBy(16.dp)
+                ) {
+                    // 头像
+                    Box(
+                        modifier = Modifier
+                            .size(80.dp)
+                            .clip(CircleShape)
+                            .clickable { imagePickerLauncher.launch("image/*") }
+                            .background(MaterialTheme.colorScheme.primaryContainer),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        if (avatarBitmap != null) {
+                            Image(
+                                bitmap = avatarBitmap!!,
+                                contentDescription = "头像",
+                                modifier = Modifier
+                                    .fillMaxSize()
+                                    .clip(CircleShape),
+                                contentScale = ContentScale.Crop
+                            )
+                        } else {
+                            Icon(
+                                imageVector = Icons.Default.Person,
+                                contentDescription = "头像",
+                                modifier = Modifier.size(48.dp),
+                                tint = MaterialTheme.colorScheme.primary
+                            )
+                        }
+                    }
+                    
+                    Column(
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                        verticalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        val user = currentUser
+                        if (user != null) {
+                            if (!user.realName.isNullOrEmpty()) {
+                                Text(
+                                    text = user.realName,
+                                    style = MaterialTheme.typography.titleLarge,
+                                    fontWeight = FontWeight.Bold
+                                )
+                            }
+                            Text(
+                                text = user.username,
+                                style = MaterialTheme.typography.bodyLarge,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                            val studentId = user.studentId
+                            if (!studentId.isNullOrEmpty()) {
+                                Text(
+                                    text = "学号: $studentId",
+                                    style = MaterialTheme.typography.bodyMedium,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            }
+                            val email = user.email
+                            if (!email.isNullOrEmpty()) {
+                                Text(
+                                    text = email,
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f)
+                                )
+                            }
+                        }
+                    }
+                }
+            }
+            
+            // 功能列表
             Surface(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -169,33 +242,50 @@ fun ProfileScreen(navController: NavHostController) {
                         fontWeight = FontWeight.Bold,
                         modifier = Modifier.padding(bottom = 8.dp)
                     )
-
-                        NavigationMenuItem(
-                            icon = Icons.Default.Favorite,
-                            title = "AI笔记助手",
-                            description = "智能生成知识提纲"
-                        ) {
-                            navController.navigate("ai_note")
-                        }
-
-                        NavigationMenuItem(
-                            icon = Icons.Default.Home,
-                            title = "作业辅导提示",
-                            description = "获取解题思路和提示"
-                        ) {
-                            navController.navigate("assignment_help")
-                        }
-
-                        NavigationMenuItem(
-                            icon = Icons.Default.List,
-                            title = "个性化学习分析",
-                            description = "查看学习报告和建议"
-                        ) {
-                            navController.navigate("learning_analytics")
-                        }
+                    
+                    NavigationMenuItem(
+                        icon = Icons.Default.Favorite,
+                        title = "AI笔记助手",
+                        description = "智能生成知识提纲"
+                    ) {
+                        navController.navigate("ai_note")
+                    }
+                    
+                    NavigationMenuItem(
+                        icon = Icons.Default.Home,
+                        title = "作业辅导提示",
+                        description = "获取解题思路和提示"
+                    ) {
+                        navController.navigate("assignment_help")
+                    }
+                    
+                    NavigationMenuItem(
+                        icon = Icons.Default.List,
+                        title = "学习分析",
+                        description = "查看学习报告和建议"
+                    ) {
+                        navController.navigate("learning_analytics")
+                    }
+                    
+                    NavigationMenuItem(
+                        icon = Icons.Default.SwapHoriz,
+                        title = "切换账号",
+                        description = "登录其他账号"
+                    ) {
+                        isSwitchAccount = true
+                        showLogoutDialog = true
+                    }
+                    
+                    NavigationMenuItem(
+                        icon = Icons.Default.DeleteForever,
+                        title = "注销账号",
+                        description = "永久删除账号及所有数据"
+                    ) {
+                        showDeleteAccountDialog = true
+                    }
                 }
             }
-
+            
             // 退出登录按钮
             Surface(
                 modifier = Modifier
@@ -204,209 +294,222 @@ fun ProfileScreen(navController: NavHostController) {
                 shape = RoundedCornerShape(16.dp),
                 color = MaterialTheme.colorScheme.surface
             ) {
-                    Button(
-                        onClick = {
-                            showLogoutDialog = true
-                        },
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(16.dp)
-                            .height(56.dp),
-                        shape = RoundedCornerShape(12.dp),
-                        colors = ButtonDefaults.buttonColors(
-                            containerColor = MaterialTheme.colorScheme.error,
-                            contentColor = Color.White
-                        )
-                    ) {
-                        Icon(
-                            imageVector = Icons.Default.ExitToApp,
-                            contentDescription = "退出登录",
-                            modifier = Modifier.size(24.dp)
-                        )
-                        Spacer(modifier = Modifier.width(8.dp))
-                        Text(
-                            text = "退出登录",
-                            style = MaterialTheme.typography.titleMedium,
-                            fontWeight = FontWeight.Bold
-                        )
-                    }
-            }
-
-            Spacer(modifier = Modifier.height(20.dp))
-        }
-
-        // 退出登录确认对话框
-        if (showLogoutDialog) {
-            AlertDialog(
-                onDismissRequest = { showLogoutDialog = false },
-                title = {
+                Button(
+                    onClick = {
+                        showLogoutDialog = true
+                    },
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(16.dp)
+                        .height(56.dp),
+                    shape = RoundedCornerShape(12.dp),
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = MaterialTheme.colorScheme.error,
+                        contentColor = Color.White
+                    )
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.ExitToApp,
+                        contentDescription = "退出登录",
+                        modifier = Modifier.size(24.dp)
+                    )
+                    Spacer(modifier = Modifier.width(8.dp))
                     Text(
-                        text = "确认退出",
-                        style = MaterialTheme.typography.titleLarge,
+                        text = "退出登录",
+                        style = MaterialTheme.typography.titleMedium,
                         fontWeight = FontWeight.Bold
                     )
-                },
-                text = {
+                }
+            }
+        }
+    }
+    
+    // 退出登录/切换账号确认对话框
+    if (showLogoutDialog) {
+        AlertDialog(
+            onDismissRequest = { 
+                showLogoutDialog = false
+                isSwitchAccount = false
+            },
+            title = {
+                Text(
+                    text = if (isSwitchAccount) "切换账号" else "确认退出",
+                    style = MaterialTheme.typography.titleLarge,
+                    fontWeight = FontWeight.Bold
+                )
+            },
+            text = {
+                Text(
+                    text = if (isSwitchAccount) 
+                        "确定要切换账号吗？切换后需要重新登录才能使用应用。" 
+                    else 
+                        "确定要退出登录吗？退出后需要重新登录才能使用应用。",
+                    style = MaterialTheme.typography.bodyMedium
+                )
+            },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        showLogoutDialog = false
+                        val switch = isSwitchAccount
+                        isSwitchAccount = false
+                        viewModel.logout()
+                        navController.navigate(Screen.Login.route) {
+                            popUpTo(0) { inclusive = true }
+                        }
+                    },
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = if (isSwitchAccount) 
+                            MaterialTheme.colorScheme.primary 
+                        else 
+                            MaterialTheme.colorScheme.error,
+                        contentColor = Color.White
+                    )
+                ) {
+                    Text(if (isSwitchAccount) "切换" else "退出")
+                }
+            },
+            dismissButton = {
+                TextButton(
+                    onClick = { 
+                        showLogoutDialog = false
+                        isSwitchAccount = false
+                    }
+                ) {
+                    Text("取消")
+                }
+            },
+            containerColor = MaterialTheme.colorScheme.surface,
+            shape = RoundedCornerShape(20.dp)
+        )
+    }
+    
+    // 注销账号确认对话框
+    if (showDeleteAccountDialog) {
+        AlertDialog(
+            onDismissRequest = { showDeleteAccountDialog = false },
+            title = {
+                Text(
+                    text = "注销账号",
+                    style = MaterialTheme.typography.titleLarge,
+                    fontWeight = FontWeight.Bold,
+                    color = MaterialTheme.colorScheme.error
+                )
+            },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     Text(
-                        text = "确定要退出登录吗？退出后需要重新登录才能使用应用。",
+                        text = "警告：此操作不可恢复！",
+                        style = MaterialTheme.typography.bodyLarge,
+                        fontWeight = FontWeight.Bold,
+                        color = MaterialTheme.colorScheme.error
+                    )
+                    Text(
+                        text = "注销账号将永久删除您的账号及所有相关数据，包括：",
                         style = MaterialTheme.typography.bodyMedium
                     )
-                },
-                confirmButton = {
-                    Button(
-                        onClick = {
-                            showLogoutDialog = false
-                            viewModel.logout()
-                                    ReminderScheduler.cancel(context.applicationContext)
-                            navController.navigate(Screen.Login.route) {
-                                popUpTo(0) { inclusive = true }
+                    Text(
+                        text = "• 个人信息\n• 创建的学习小组\n• 加入的小组数据\n• 课程和任务记录\n• 所有其他相关数据",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                    Text(
+                        text = "确定要继续吗？",
+                        style = MaterialTheme.typography.bodyMedium,
+                        fontWeight = FontWeight.Medium
+                    )
+                }
+            },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        currentUser?.let { user ->
+                            scope.launch {
+                                try {
+                                    viewModel.deleteAccount(user)
+                                    showDeleteAccountDialog = false
+                                    navController.navigate(Screen.Login.route) {
+                                        popUpTo(0) { inclusive = true }
+                                    }
+                                } catch (e: Exception) {
+                                    // 可以显示错误提示
+                                    showDeleteAccountDialog = false
+                                }
                             }
-                        },
-                        colors = ButtonDefaults.buttonColors(
-                            containerColor = MaterialTheme.colorScheme.error,
-                            contentColor = Color.White
-                        )
-                    ) {
-                        Text("退出")
-                    }
-                },
-                dismissButton = {
-                    TextButton(
-                        onClick = { showLogoutDialog = false }
-                    ) {
-                        Text("取消")
-                    }
-                },
-                containerColor = MaterialTheme.colorScheme.surface,
-                shape = RoundedCornerShape(20.dp)
-            )
-        }
+                        }
+                    },
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = MaterialTheme.colorScheme.error,
+                        contentColor = Color.White
+                    )
+                ) {
+                    Text("确认注销")
+                }
+            },
+            dismissButton = {
+                TextButton(
+                    onClick = { showDeleteAccountDialog = false }
+                ) {
+                    Text("取消")
+                }
+            },
+            containerColor = MaterialTheme.colorScheme.surface,
+            shape = RoundedCornerShape(20.dp)
+        )
     }
 }
 
 @Composable
-private fun ProfileHeaderSection(
-    user: com.example.myapplication.data.model.User?,
-    avatarBitmap: ImageBitmap?,
-    onAvatarClick: () -> Unit,
-    stats: List<Pair<String, Int>>
+fun NavigationMenuItem(
+    icon: androidx.compose.ui.graphics.vector.ImageVector,
+    title: String,
+    description: String,
+    onClick: () -> Unit
 ) {
-    Box(
+    Card(
+        onClick = onClick,
         modifier = Modifier
             .fillMaxWidth()
-            .padding(16.dp)
-            .clip(RoundedCornerShape(28.dp))
-            .background(
-                Brush.linearGradient(
-                    colors = listOf(
-                        MaterialTheme.colorScheme.primary,
-                        MaterialTheme.colorScheme.secondary
-                    )
-                )
-            )
-            .padding(24.dp)
+            .padding(vertical = 4.dp),
+        shape = RoundedCornerShape(12.dp),
+        colors = CardDefaults.cardColors(
+            containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)
+        )
     ) {
-        Column(
-            horizontalAlignment = Alignment.CenterHorizontally,
-            verticalArrangement = Arrangement.spacedBy(16.dp)
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(16.dp),
+            horizontalArrangement = Arrangement.spacedBy(16.dp),
+            verticalAlignment = Alignment.CenterVertically
         ) {
-            Box(
-                modifier = Modifier
-                    .size(96.dp)
-                    .clip(CircleShape)
-                    .clickable { onAvatarClick() }
-                    .background(MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.4f)),
-                contentAlignment = Alignment.Center
+            Icon(
+                imageVector = icon,
+                contentDescription = title,
+                modifier = Modifier.size(32.dp),
+                tint = MaterialTheme.colorScheme.primary
+            )
+            Column(
+                modifier = Modifier.weight(1f),
+                verticalArrangement = Arrangement.spacedBy(4.dp)
             ) {
-                if (avatarBitmap != null) {
-                    Image(
-                        bitmap = avatarBitmap,
-                        contentDescription = "头像",
-                        modifier = Modifier
-                            .fillMaxSize()
-                            .clip(CircleShape)
-                    )
-                } else {
-                    Icon(
-                        imageVector = Icons.Default.Person,
-                        contentDescription = "头像",
-                        tint = Color.White,
-                        modifier = Modifier.size(48.dp)
-                    )
-                }
-            }
-
-            Column(horizontalAlignment = Alignment.CenterHorizontally) {
                 Text(
-                    text = user?.realName?.takeIf { it.isNotBlank() } ?: user?.username ?: "未登录",
-                    style = MaterialTheme.typography.headlineSmall,
-                    fontWeight = FontWeight.Bold,
-                    color = Color.White
+                    text = title,
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.Medium
                 )
-                user?.studentId?.takeIf { it.isNotBlank() }?.let {
-                    Text(
-                        text = "学号 $it",
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = Color.White.copy(alpha = 0.8f)
-                    )
-                }
-                user?.email?.takeIf { it.isNotBlank() }?.let {
-                    Text(
-                        text = it,
-                        style = MaterialTheme.typography.bodySmall,
-                        color = Color.White.copy(alpha = 0.7f)
-                    )
-                }
+                Text(
+                    text = description,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
             }
-
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(12.dp)
-            ) {
-                stats.forEach { (label, value) ->
-                    Column(
-                        modifier = Modifier
-                            .weight(1f)
-                            .clip(RoundedCornerShape(16.dp))
-                            .background(Color.White.copy(alpha = 0.15f))
-                            .padding(vertical = 12.dp),
-                        horizontalAlignment = Alignment.CenterHorizontally
-                    ) {
-                        Text(
-                            text = value.toString(),
-                            style = MaterialTheme.typography.titleLarge,
-                            fontWeight = FontWeight.Bold,
-                            color = Color.White
-                        )
-                        Text(
-                            text = label,
-                            style = MaterialTheme.typography.bodySmall,
-                            color = Color.White.copy(alpha = 0.8f)
-                        )
-                    }
-                }
-            }
+            Text(
+                text = "›",
+                style = MaterialTheme.typography.titleLarge,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
         }
-    }
-}
-
-private fun loadAvatarBitmap(context: Context, uriString: String?): ImageBitmap? {
-    if (uriString.isNullOrBlank()) return null
-    return try {
-        val bitmap: Bitmap? = when {
-            uriString.startsWith("file://") -> {
-                val file = File(Uri.parse(uriString).path ?: return null)
-                BitmapFactory.decodeFile(file.absolutePath)
-            }
-            uriString.startsWith("/") -> BitmapFactory.decodeFile(uriString)
-            else -> {
-                val uri = Uri.parse(uriString)
-                context.contentResolver.openInputStream(uri)?.use { BitmapFactory.decodeStream(it) }
-            }
-        }
-        bitmap?.asImageBitmap()
-    } catch (e: Exception) {
-        null
     }
 }
 
