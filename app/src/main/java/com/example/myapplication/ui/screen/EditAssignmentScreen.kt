@@ -298,14 +298,14 @@ fun EditAssignmentScreen(navController: NavHostController, assignmentId: Int?) {
                             shape = RoundedCornerShape(12.dp),
                             colors = CardDefaults.elevatedCardColors(
                                 containerColor = MaterialTheme.colorScheme.surfaceVariant
-                            )
-                        ) {
-                            Column(
-                                modifier = Modifier
-                                    .fillMaxWidth()
+                    )
+                ) {
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth()
                                     .padding(16.dp),
-                                verticalArrangement = Arrangement.spacedBy(16.dp)
-                            ) {
+                        verticalArrangement = Arrangement.spacedBy(16.dp)
+                    ) {
                                 Row(
                                     modifier = Modifier.fillMaxWidth(),
                                     horizontalArrangement = Arrangement.SpaceBetween,
@@ -326,7 +326,7 @@ fun EditAssignmentScreen(navController: NavHostController, assignmentId: Int?) {
                                             style = MaterialTheme.typography.titleMedium,
                                             fontWeight = FontWeight.Bold
                                         )
-                                        Text(
+                        Text(
                                             text = "点击选择截止日期和时间",
                                             style = MaterialTheme.typography.bodySmall,
                                             color = MaterialTheme.colorScheme.onSurfaceVariant
@@ -344,27 +344,27 @@ fun EditAssignmentScreen(navController: NavHostController, assignmentId: Int?) {
                                 }
 
                                 Divider()
-
-                                Row(
-                                    modifier = Modifier.fillMaxWidth(),
-                                    horizontalArrangement = Arrangement.SpaceBetween,
-                                    verticalAlignment = Alignment.CenterVertically
-                                ) {
+                        
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
                                     Column {
                                         Text("启用提醒", style = MaterialTheme.typography.titleSmall)
-                                        Text(
+                            Text(
                                             text = "自定义首次/紧急提醒时间",
                                             style = MaterialTheme.typography.bodySmall,
                                             color = MaterialTheme.colorScheme.onSurfaceVariant
-                                        )
+                            )
                                     }
-                                    Switch(
-                                        checked = reminderEnabled,
-                                        onCheckedChange = { reminderEnabled = it },
-                                        colors = SwitchDefaults.colors(
-                                            checkedThumbColor = MaterialTheme.colorScheme.primary,
-                                            checkedTrackColor = MaterialTheme.colorScheme.primaryContainer
-                                        )
+                            Switch(
+                                checked = reminderEnabled,
+                                onCheckedChange = { reminderEnabled = it },
+                                colors = SwitchDefaults.colors(
+                                    checkedThumbColor = MaterialTheme.colorScheme.primary,
+                                    checkedTrackColor = MaterialTheme.colorScheme.primaryContainer
+                                )
                                     )
                                 }
 
