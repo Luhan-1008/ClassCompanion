@@ -1,5 +1,6 @@
 package com.example.myapplication.ui.viewmodel
 
+import android.content.Context
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
@@ -12,6 +13,7 @@ import com.example.myapplication.domain.ai.AiNoteAttachment
 import com.example.myapplication.domain.ai.AiNoteInsights
 import com.example.myapplication.domain.ai.AssignmentHint
 import com.example.myapplication.domain.ai.StudyPlanDay
+import com.example.myapplication.service.AiModelService
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -119,7 +121,7 @@ class AiAssistViewModel(
         }
     }
 
-    fun requestAssignmentHelp(question: String) {
+    fun requestAssignmentHelp(question: String, context: Context) {
         if (question.isBlank()) {
             _assignmentUiState.value = AssignmentHelpUiState(
                 isProcessing = false,
@@ -138,13 +140,53 @@ class AiAssistViewModel(
                     ?.flatMap { keyword ->
                         groupMessageRepository.searchMessages(keyword, limit = 5)
                     } ?: emptyList()
-                val hint = AiAssistEngine.generateAssignmentHint(
-                    question = question,
-                    courses = courses,
-                    assignments = assignments,
-                    relatedMessages = relatedMessages
-                )
-                _assignmentUiState.value = AssignmentHelpUiState(isProcessing = false, hint = hint)
+                val contextInfo = buildString {
+                    if (courses.isNotEmpty()) {
+                        append("相关课程：\n")
+                        courses.take(5).forEach { course ->
+                            append("- ${course.courseName}")
+                            course.teacherName?.takeIf { it.isNotBlank() }?.let { append("（教师：$it）") }
+                            append("\n")
+                        }
+                        append("\n")
+                    }
+                    if (assignments.isNotEmpty()) {
+                        append("相关作业：\n")
+                        assignments.take(5).forEach { assignment ->
+                            append("- ${assignment.title}")
+                            assignment.description?.takeIf { it.isNotBlank() }?.let { append("：${it.take(60)}") }
+                            append("\n")
+                        }
+                        append("\n")
+                    }
+                    if (relatedMessages.isNotEmpty()) {
+                        append("小组讨论要点：\n")
+                        relatedMessages.take(5).forEach { message ->
+                            append("- $message\n")
+                        }
+                    }
+                }.ifBlank { null }
+                
+                val aiService = AiModelService(context)
+                val hintResult = aiService.generateAssignmentHint(question, contextInfo)
+                
+                hintResult.onSuccess { hintResponse ->
+                    val hint = AssignmentHint(
+                        relatedConcepts = hintResponse.relatedConcepts,
+                        formulas = hintResponse.formulas,
+                        solutionSteps = hintResponse.solutionSteps,
+                        chapterRecommendations = hintResponse.chapterLinks.map {
+                            com.example.myapplication.domain.ai.ChapterLink(it.courseName, it.chapterLabel, it.reason)
+                        },
+                        relatedDiscussions = hintResponse.relatedDiscussions
+                    )
+                    _assignmentUiState.value = AssignmentHelpUiState(isProcessing = false, hint = hint)
+                }.onFailure { error ->
+                    _assignmentUiState.value = AssignmentHelpUiState(
+                        isProcessing = false,
+                        errorMessage = error.message ?: "提示生成失败，请稍后重试"
+                    )
+                }
             } catch (e: Exception) {
                 _assignmentUiState.value = AssignmentHelpUiState(
                     isProcessing = false,

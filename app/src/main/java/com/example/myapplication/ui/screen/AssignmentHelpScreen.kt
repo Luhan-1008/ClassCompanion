@@ -1,10 +1,16 @@
 package com.example.myapplication.ui.screen
 
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.shadow
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowBack
 import androidx.compose.material.icons.filled.TipsAndUpdates
@@ -12,6 +18,7 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.navigation.NavHostController
@@ -55,89 +62,180 @@ fun AssignmentHelpScreen(navController: NavHostController) {
             )
         }
     ) { padding ->
-        Column(
+        Box(
             modifier = Modifier
                 .padding(padding)
                 .fillMaxSize()
-                .padding(16.dp),
-            verticalArrangement = Arrangement.spacedBy(16.dp)
+                .background(MaterialTheme.colorScheme.background)
         ) {
-            Text(
-                text = "聚焦思路而非直接答案，自动聚合概念、公式、解题步骤与小组讨论。",
-                style = MaterialTheme.typography.bodyMedium
-            )
-
-            OutlinedTextField(
-                value = question,
-                onValueChange = { question = it },
-                label = { Text("问题描述") },
+            Column(
                 modifier = Modifier
-                    .fillMaxWidth()
-                    .heightIn(min = 160.dp),
-                maxLines = 6
-            )
-
-            FlowRow(
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
-                verticalArrangement = Arrangement.spacedBy(8.dp),
-                modifier = Modifier.fillMaxWidth()
+                    .fillMaxSize()
+                    .verticalScroll(rememberScrollState())
+                    .padding(20.dp),
+                verticalArrangement = Arrangement.spacedBy(20.dp)
             ) {
-                presetQuestions.forEach { preset ->
-                    SuggestionChip(onClick = { question = preset }, label = { Text(preset) })
-                }
-            }
-
-            Button(
-                onClick = { viewModel.requestAssignmentHelp(question) },
-                modifier = Modifier.fillMaxWidth(),
-                enabled = question.isNotBlank() && !uiState.isProcessing
-            ) {
-                Text("生成思路提示")
-            }
-
-            if (uiState.isProcessing) {
-                LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
-            }
-
-            uiState.errorMessage?.let {
-                AssistChip(onClick = { viewModel.clearAssignmentError() }, label = { Text(it) })
-            }
-
-            uiState.hint?.let { hint ->
-                LazyColumn(
-                    verticalArrangement = Arrangement.spacedBy(12.dp),
-                    modifier = Modifier.fillMaxSize()
+                Card(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .shadow(4.dp, shape = RoundedCornerShape(20.dp)),
+                    shape = RoundedCornerShape(20.dp),
+                    colors = CardDefaults.cardColors(
+                        containerColor = MaterialTheme.colorScheme.primaryContainer
+                    )
                 ) {
-                    item {
-                        HintCard(
-                            title = "概念梳理",
-                            items = hint.relatedConcepts
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(20.dp),
+                        verticalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        Text(
+                            text = "聚焦思路，不直接给答案",
+                            style = MaterialTheme.typography.titleLarge,
+                            fontWeight = FontWeight.Bold,
+                            color = MaterialTheme.colorScheme.onPrimaryContainer
+                        )
+                        Text(
+                            text = "结合课程与小组讨论，生成概念、公式与步骤提示，帮你找到解题方向。",
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.85f)
                         )
                     }
-                    item {
-                        HintCard(
-                            title = "常用公式 / 模型",
-                            items = hint.formulas
+                }
+
+                Card(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .shadow(4.dp, shape = RoundedCornerShape(18.dp)),
+                    shape = RoundedCornerShape(18.dp)
+                ) {
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(20.dp),
+                        verticalArrangement = Arrangement.spacedBy(16.dp)
+                    ) {
+                        Text(
+                            text = "输入问题",
+                            style = MaterialTheme.typography.titleMedium,
+                            fontWeight = FontWeight.Bold,
+                            color = MaterialTheme.colorScheme.primary
                         )
-                    }
-                    item {
-                        HintCard(
-                            title = "解题步骤建议",
-                            items = hint.solutionSteps,
-                            leadingIcon = Icons.Default.TipsAndUpdates
+                        OutlinedTextField(
+                            value = question,
+                            onValueChange = { question = it },
+                            label = { Text("问题描述 / 卡点") },
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .heightIn(min = 160.dp),
+                            maxLines = 6,
+                            shape = RoundedCornerShape(14.dp)
                         )
+                        FlowRow(
+                            horizontalArrangement = Arrangement.spacedBy(8.dp),
+                            verticalArrangement = Arrangement.spacedBy(8.dp),
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            presetQuestions.forEach { preset ->
+                                SuggestionChip(
+                                    onClick = { question = preset },
+                                    label = { Text(preset) }
+                                )
+                            }
+                        }
                     }
-                    item {
-                        ChapterLinkSection(chapters = hint.chapterRecommendations)
+                }
+
+                Button(
+                    onClick = { viewModel.requestAssignmentHelp(question, context) },
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(58.dp)
+                        .shadow(6.dp, shape = RoundedCornerShape(18.dp)),
+                    shape = RoundedCornerShape(18.dp),
+                    enabled = question.isNotBlank() && !uiState.isProcessing
+                ) {
+                    Text(
+                        text = if (uiState.isProcessing) "正在生成..." else "生成思路提示",
+                        style = MaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.Bold
+                    )
+                }
+
+                if (uiState.isProcessing) {
+                    LinearProgressIndicator(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(4.dp)
+                            .clip(RoundedCornerShape(2.dp))
+                    )
+                }
+
+                uiState.errorMessage?.let {
+                    Card(
+                        modifier = Modifier.fillMaxWidth(),
+                        shape = RoundedCornerShape(12.dp),
+                        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.errorContainer)
+                    ) {
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(16.dp),
+                            horizontalArrangement = Arrangement.SpaceBetween
+                        ) {
+                            Text(
+                                it,
+                                style = MaterialTheme.typography.bodyMedium,
+                                color = MaterialTheme.colorScheme.onErrorContainer,
+                                modifier = Modifier.weight(1f)
+                            )
+                            TextButton(onClick = { viewModel.clearAssignmentError() }) {
+                                Text("关闭")
+                            }
+                        }
                     }
-                    item {
-                        if (hint.relatedDiscussions.isNotEmpty()) {
-                            Card {
-                                Column(modifier = Modifier.padding(16.dp)) {
-                                    Text("小组讨论串", style = MaterialTheme.typography.titleSmall)
-                                    Spacer(modifier = Modifier.height(8.dp))
-                                    hint.relatedDiscussions.forEach { message ->
-                                        Text(text = "· $message", style = MaterialTheme.typography.bodySmall)
+                }
+
+                uiState.hint?.let { hint ->
+                    LazyColumn(
+                        verticalArrangement = Arrangement.spacedBy(12.dp),
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        item {
+                            HintCard(
+                                title = "概念梳理",
+                                items = hint.relatedConcepts
+                            )
+                        }
+                        item {
+                            HintCard(
+                                title = "常用公式 / 模型",
+                                items = hint.formulas
+                            )
+                        }
+                        item {
+                            HintCard(
+                                title = "解题步骤建议",
+                                items = hint.solutionSteps,
+                                leadingIcon = Icons.Default.TipsAndUpdates
+                            )
+                        }
+                        item {
+                            ChapterLinkSection(chapters = hint.chapterRecommendations)
+                        }
+                        item {
+                            if (hint.relatedDiscussions.isNotEmpty()) {
+                                Card(
+                                    shape = RoundedCornerShape(16.dp),
+                                    modifier = Modifier.fillMaxWidth()
+                                ) {
+                                    Column(modifier = Modifier.padding(16.dp)) {
+                                        Text("小组讨论串", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+                                        Spacer(modifier = Modifier.height(8.dp))
+                                        hint.relatedDiscussions.forEach { message ->
+                                            Text(text = "· $message", style = MaterialTheme.typography.bodySmall)
+                                        }
                                     }
                                 }
                             }
@@ -156,13 +254,16 @@ private fun HintCard(
     leadingIcon: androidx.compose.ui.graphics.vector.ImageVector? = null
 ) {
     if (items.isEmpty()) return
-    Card {
+    Card(
+        shape = RoundedCornerShape(16.dp),
+        modifier = Modifier.fillMaxWidth()
+    ) {
         Column(modifier = Modifier.padding(16.dp)) {
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 leadingIcon?.let {
-                    Icon(it, contentDescription = null)
+                    Icon(it, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
                 }
-                Text(title, style = MaterialTheme.typography.titleSmall)
+                Text(title, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
             }
             Spacer(modifier = Modifier.height(8.dp))
             items.forEachIndexed { index, text ->
@@ -175,9 +276,9 @@ private fun HintCard(
 @Composable
 private fun ChapterLinkSection(chapters: List<ChapterLink>) {
     if (chapters.isEmpty()) return
-    Card {
+    Card(shape = RoundedCornerShape(16.dp)) {
         Column(modifier = Modifier.padding(16.dp)) {
-            Text("推荐复习章节", style = MaterialTheme.typography.titleSmall)
+            Text("推荐复习章节", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
             Spacer(modifier = Modifier.height(8.dp))
             chapters.forEach {
                 Text("· ${it.courseName} - ${it.chapterLabel}", style = MaterialTheme.typography.bodyMedium)

@@ -4,9 +4,6 @@ import android.content.Context
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import android.net.Uri
-import android.util.Base64
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.withContext
 import okhttp3.*
 import okhttp3.MediaType.Companion.toMediaTypeOrNull
 import okhttp3.RequestBody.Companion.toRequestBody
@@ -14,6 +11,12 @@ import org.json.JSONArray
 import org.json.JSONObject
 import java.io.ByteArrayOutputStream
 import java.io.InputStream
+import java.net.SocketTimeoutException
+import java.util.concurrent.TimeUnit
+import android.util.Base64
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.withContext
 
 /**
  * 大模型服务类
@@ -24,10 +27,19 @@ class AiModelService(private val context: Context) {
     // 这里需要配置你的API密钥和端点
     // 可以在local.properties中配置，或使用环境变量
     // 注意：在生产环境中，应该从安全的地方读取API密钥，不要硬编码
-    private val apiKey: String = System.getenv("OPENAI_API_KEY") 
-        ?: "your-api-key-here" // 需要替换为实际的API密钥，或设置环境变量
-    private val apiBaseUrl: String = System.getenv("OPENAI_API_BASE_URL")
-        ?: "https://api.openai.com/v1" // OpenAI API端点，或使用环境变量
+    private val apiKey: String = "e25e651255de49b3a361395dda2b4c36.ErWVuTcvHPsqGmlX"
+    private val chatCompletionUrl: String = "https://open.bigmodel.cn/api/paas/v4/chat/completions"
+    private val visionModel = "glm-4v"
+    private val textModel = "glm-4-flash"
+
+    private val httpClient by lazy {
+        OkHttpClient.Builder()
+            .connectTimeout(20, TimeUnit.SECONDS)
+            .writeTimeout(60, TimeUnit.SECONDS)
+            .readTimeout(60, TimeUnit.SECONDS)
+            .retryOnConnectionFailure(true)
+            .build()
+    }
     
     /**
      * 生成知识提纲
@@ -41,9 +53,7 @@ class AiModelService(private val context: Context) {
         imageBase64: String? = null,
         audioTranscript: String? = null
     ): Result<KnowledgeOutline> = withContext(Dispatchers.IO) {
-        try {
-            val client = OkHttpClient()
-            
+        try {            
             // 构建提示词
             val systemPrompt = """你是一位专业的教学助手，擅长将课堂内容整理成结构清晰、重点突出的知识提纲。
 请根据提供的课堂内容（包括文本、图片和录音转文字），生成以下格式的知识提纲：
@@ -97,20 +107,21 @@ class AiModelService(private val context: Context) {
             }
             
             val requestBody = JSONObject().apply {
-                put("model", if (imageBase64 != null) "gpt-4-vision-preview" else "gpt-4")
+                put("model", if (imageBase64 != null) visionModel else textModel)
                 put("messages", messages)
                 put("temperature", 0.7)
+                put("top_p", 0.9)
                 put("max_tokens", 2000)
             }
             
             val request = Request.Builder()
-                .url("$apiBaseUrl/chat/completions")
+                .url(chatCompletionUrl)
                 .addHeader("Authorization", "Bearer $apiKey")
                 .addHeader("Content-Type", "application/json")
                 .post(requestBody.toString().toRequestBody("application/json".toMediaTypeOrNull()))
                 .build()
             
-            val response = client.newCall(request).execute()
+            val response = executeWithRetry(request)
             
             if (!response.isSuccessful) {
                 return@withContext Result.failure(
@@ -128,6 +139,78 @@ class AiModelService(private val context: Context) {
             val outline = parseModelResponse(content)
             
             Result.success(outline)
+        } catch (e: SocketTimeoutException) {
+            Result.failure(Exception("请求智谱超时，请稍后重试", e))
+        } catch (e: Exception) {
+            Result.failure(e)
+        }
+    }
+    
+    suspend fun generateAssignmentHint(
+        question: String,
+        contextInfo: String?
+    ): Result<AssignmentHintResponse> = withContext(Dispatchers.IO) {
+        try {
+            val systemPrompt = """
+你是一位专业的作业辅导老师，请围绕“启发式解题”提供帮助，避免直接给出作业答案。
+返回严格的JSON，格式如下：
+{
+  "concepts": ["概念1", "..."],
+  "formulas": ["公式1", "..."],
+  "steps": ["步骤1", "..."],
+  "chapters": [
+    {"courseName":"课程名","chapterLabel":"章节","reason":"推荐理由"}
+  ],
+  "discussions": ["建议查阅的小组讨论或扩展资源"]
+}
+"""
+            val userContent = buildString {
+                append("问题描述：\n$question\n\n")
+                contextInfo?.takeIf { it.isNotBlank() }?.let {
+                    append("补充背景：\n$it")
+                }
+            }
+            
+            val messages = JSONArray().apply {
+                put(JSONObject().apply {
+                    put("role", "system")
+                    put("content", systemPrompt.trimIndent())
+                })
+                put(JSONObject().apply {
+                    put("role", "user")
+                    put("content", userContent)
+                })
+            }
+            
+            val requestBody = JSONObject().apply {
+                put("model", textModel)
+                put("messages", messages)
+                put("temperature", 0.6)
+                put("max_tokens", 1200)
+            }
+            
+            val request = Request.Builder()
+                .url(chatCompletionUrl)
+                .addHeader("Authorization", "Bearer $apiKey")
+                .addHeader("Content-Type", "application/json")
+                .post(requestBody.toString().toRequestBody("application/json".toMediaTypeOrNull()))
+                .build()
+            
+            val response = executeWithRetry(request)
+            if (!response.isSuccessful) {
+                return@withContext Result.failure(
+                    Exception("提示生成失败: ${response.code} ${response.message}")
+                )
+            }
+            
+            val responseBody = response.body?.string() ?: ""
+            val jsonResponse = JSONObject(responseBody)
+            val choices = jsonResponse.getJSONArray("choices")
+            val message = choices.getJSONObject(0).getJSONObject("message").getString("content")
+            
+            Result.success(parseAssignmentHintResponse(message))
+        } catch (e: SocketTimeoutException) {
+            Result.failure(Exception("请求智谱超时，请稍后重试", e))
         } catch (e: Exception) {
             Result.failure(e)
         }
@@ -156,50 +239,9 @@ class AiModelService(private val context: Context) {
     /**
      * 语音转文字（使用OpenAI Whisper API）
      */
-    suspend fun transcribeAudio(uri: Uri): Result<String> = withContext(Dispatchers.IO) {
-        try {
-            val client = OkHttpClient()
-            val inputStream: InputStream? = context.contentResolver.openInputStream(uri)
-            
-            if (inputStream == null) {
-                return@withContext Result.failure(Exception("无法读取音频文件"))
-            }
-            
-            val audioBytes = inputStream.readBytes()
-            val requestBody = MultipartBody.Builder()
-                .setType(MultipartBody.FORM)
-                .addFormDataPart(
-                    "file",
-                    "audio.m4a",
-                    RequestBody.create("audio/m4a".toMediaTypeOrNull(), audioBytes)
-                )
-                .addFormDataPart("model", "whisper-1")
-                .addFormDataPart("language", "zh")
-                .build()
-            
-            val request = Request.Builder()
-                .url("$apiBaseUrl/audio/transcriptions")
-                .addHeader("Authorization", "Bearer $apiKey")
-                .post(requestBody)
-                .build()
-            
-            val response = client.newCall(request).execute()
-            
-            if (!response.isSuccessful) {
-                return@withContext Result.failure(
-                    Exception("语音识别失败: ${response.code} ${response.message}")
-                )
-            }
-            
-            val responseBody = response.body?.string() ?: ""
-            val jsonResponse = JSONObject(responseBody)
-            val text = jsonResponse.getString("text")
-            
-            Result.success(text)
-        } catch (e: Exception) {
-            Result.failure(e)
-        }
-    }
+    suspend fun transcribeAudio(uri: Uri): Result<String> = Result.failure(
+        IllegalStateException("当前未集成智谱语音识别，请先将录音转换为文字后再上传。")
+    )
     
     /**
      * 解析大模型返回的内容为结构化格式
@@ -315,6 +357,43 @@ class AiModelService(private val context: Context) {
             )
         }
     }
+    
+    private fun parseAssignmentHintResponse(content: String): AssignmentHintResponse {
+        return try {
+            val json = JSONObject(content)
+            AssignmentHintResponse(
+                relatedConcepts = parseStringArray(json.optJSONArray("concepts")),
+                formulas = parseStringArray(json.optJSONArray("formulas")),
+                solutionSteps = parseStringArray(json.optJSONArray("steps")),
+                chapterLinks = parseChapterLinks(json.optJSONArray("chapters")),
+                relatedDiscussions = parseStringArray(json.optJSONArray("discussions"))
+            )
+        } catch (e: Exception) {
+            AssignmentHintResponse(
+                relatedConcepts = emptyList(),
+                formulas = emptyList(),
+                solutionSteps = listOf(content),
+                chapterLinks = emptyList(),
+                relatedDiscussions = emptyList()
+            )
+        }
+    }
+    
+    private suspend fun executeWithRetry(request: Request, maxRetry: Int = 1): Response {
+        var attempt = 0
+        var lastError: Exception? = null
+        while (attempt <= maxRetry) {
+            try {
+                return httpClient.newCall(request).execute()
+            } catch (e: Exception) {
+                lastError = e
+                if (attempt == maxRetry) throw e
+                delay(((attempt + 1) * 1000L).coerceAtMost(4000L))
+            }
+            attempt++
+        }
+        throw lastError ?: IllegalStateException("未知错误")
+    }
 }
 
 /**
@@ -342,5 +421,13 @@ data class ChapterLink(
     val courseName: String,
     val chapterLabel: String,
     val reason: String
+)
+
+data class AssignmentHintResponse(
+    val relatedConcepts: List<String>,
+    val formulas: List<String>,
+    val solutionSteps: List<String>,
+    val chapterLinks: List<ChapterLink>,
+    val relatedDiscussions: List<String>
 )
 
