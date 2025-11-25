@@ -33,6 +33,7 @@ import com.example.myapplication.ui.navigation.Screen
 import com.example.myapplication.ui.viewmodel.AuthResult
 import com.example.myapplication.ui.viewmodel.UserViewModel
 import com.example.myapplication.ui.viewmodel.UserViewModelFactory
+import android.util.Patterns
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -58,12 +59,28 @@ fun RegisterScreen(navController: NavHostController) {
     
     val registerResult by viewModel.registerResult.collectAsState()
     
+    val trimmedEmail = email.trim()
+    val emailPattern = Patterns.EMAIL_ADDRESS
+    val isEmailValid = trimmedEmail.isNotBlank() && emailPattern.matcher(trimmedEmail).matches()
+    
+    val passwordIssues = remember(password) {
+        val issues = mutableListOf<String>()
+        if (password.length < 8) issues += "至少8个字符"
+        if (!password.any { it.isDigit() }) issues += "至少包含一个数字"
+        if (!password.any { it.isLowerCase() }) issues += "至少包含一个小写字母"
+        if (!password.any { it.isUpperCase() }) issues += "至少包含一个大写字母"
+        issues
+    }
+    val isPasswordStrong = password.isNotBlank() && passwordIssues.isEmpty()
+    
     val isRegisterEnabled =
         username.isNotBlank() &&
         password.isNotBlank() &&
         confirmPassword.isNotBlank() &&
         password == confirmPassword &&
         studentId.isNotBlank() &&
+        isPasswordStrong &&
+        isEmailValid &&
         registerResult !is AuthResult.Success
     
     // 处理注册结果
@@ -165,6 +182,7 @@ fun RegisterScreen(navController: NavHostController) {
                             shape = RoundedCornerShape(12.dp),
                             visualTransformation = if (passwordVisible) VisualTransformation.None else PasswordVisualTransformation(),
                             keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password),
+                            isError = password.isNotBlank() && !isPasswordStrong,
                             trailingIcon = {
                                 IconButton(onClick = { passwordVisible = !passwordVisible }) {
                                     Icon(
@@ -172,6 +190,20 @@ fun RegisterScreen(navController: NavHostController) {
                                         contentDescription = if (passwordVisible) "隐藏密码" else "显示密码"
                                     )
                                 }
+                            },
+                            supportingText = {
+                                val text = if (password.isBlank()) {
+                                    "需至少8位，包含大小写字母和数字"
+                                } else if (!isPasswordStrong) {
+                                    "密码需满足：${passwordIssues.joinToString("，")}"
+                                } else {
+                                    "密码强度合格"
+                                }
+                                Text(
+                                    text = text,
+                                    color = if (!isPasswordStrong && password.isNotBlank()) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurfaceVariant,
+                                    style = MaterialTheme.typography.bodySmall
+                                )
                             },
                             enabled = registerResult !is AuthResult.Success
                         )
@@ -244,11 +276,24 @@ fun RegisterScreen(navController: NavHostController) {
                         OutlinedTextField(
                             value = email,
                             onValueChange = { email = it },
-                            label = { Text("邮箱") },
+                            label = { Text("邮箱 *") },
                             modifier = Modifier.fillMaxWidth(),
                             singleLine = true,
                             shape = RoundedCornerShape(12.dp),
                             keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Email),
+                            isError = email.isNotBlank() && !isEmailValid,
+                            supportingText = {
+                                val text = when {
+                                    trimmedEmail.isBlank() -> "请输入常用邮箱，便于找回账号"
+                                    !isEmailValid -> "邮箱格式不正确"
+                                    else -> "该邮箱将用于账号绑定"
+                                }
+                                Text(
+                                    text = text,
+                                    color = if (!isEmailValid && trimmedEmail.isNotBlank()) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurfaceVariant,
+                                    style = MaterialTheme.typography.bodySmall
+                                )
+                            },
                             enabled = registerResult !is AuthResult.Success
                         )
                     }
@@ -284,7 +329,7 @@ fun RegisterScreen(navController: NavHostController) {
                         password = password,
                         studentId = studentId.trim(),
                         realName = realName.ifBlank { null },
-                        email = email.ifBlank { null }
+                        email = trimmedEmail
                     )
                     viewModel.register(user)
                 }

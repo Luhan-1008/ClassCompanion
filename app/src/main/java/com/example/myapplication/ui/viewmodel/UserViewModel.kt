@@ -93,6 +93,14 @@ class UserViewModel(
                     _registerResult.value = AuthResult.Error("用户名已存在")
                     return@launch
                 }
+                if (user.email.isNullOrBlank()) {
+                    _registerResult.value = AuthResult.Error("请输入有效邮箱")
+                    return@launch
+                }
+                if (repository.emailExists(user.email)) {
+                    _registerResult.value = AuthResult.Error("该邮箱已绑定其他账号")
+                    return@launch
+                }
                 val userId = repository.register(user)
                 if (userId > 0) {
                     // 注册成功后自动登录，设置会话信息
