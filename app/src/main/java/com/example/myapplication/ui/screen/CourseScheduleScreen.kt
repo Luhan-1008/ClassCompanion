@@ -17,6 +17,7 @@ import androidx.compose.material.icons.filled.Download
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.Upload
 import androidx.compose.material.icons.filled.Visibility
+import androidx.compose.material.icons.filled.Save
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -47,6 +48,8 @@ import com.example.myapplication.ui.navigation.Screen
 import com.example.myapplication.ui.viewmodel.CourseViewModel
 import com.example.myapplication.ui.viewmodel.CourseViewModelFactory
 import java.util.*
+import java.text.SimpleDateFormat
+import java.util.Locale
 
 enum class ScheduleViewType {
     DAY,    // 日视图
@@ -131,6 +134,41 @@ fun CourseScheduleScreen(navController: NavHostController) {
         }
     }
     
+    val exportLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.CreateDocument("application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
+    ) { uri: Uri? ->
+        if (uri != null) {
+            scope.launch {
+                try {
+                    if (courses.isEmpty()) {
+                        importResult = "当前没有课程可导出"
+                        showImportDialog = true
+                        return@launch
+                    }
+                    val bytes = withContext(Dispatchers.IO) {
+                        CourseImportParser.exportCoursesToWeeklyExcel(courses)
+                    }
+                    context.contentResolver.openOutputStream(uri)?.use {
+                        it.write(bytes)
+                    } ?: run {
+                        importResult = "无法写入文件"
+                        showImportDialog = true
+                        return@launch
+                    }
+                    importResult = "导出成功，已保存课程表"
+                } catch (e: Exception) {
+                    importResult = "导出失败: ${e.message}"
+                }
+                showImportDialog = true
+            }
+        }
+    }
+    
+    val exportFileName = remember {
+        val sdf = SimpleDateFormat("课程表_yyyyMMdd_HHmm'.xlsx'", Locale.getDefault())
+        sdf.format(Date())
+    }
+    
     // 监听导入结果
     LaunchedEffect(insertSuccess, errorMessage) {
         if (insertSuccess) {
@@ -188,6 +226,16 @@ fun CourseScheduleScreen(navController: NavHostController) {
                         Icon(
                             imageVector = Icons.Default.Upload,
                             contentDescription = "导入课程"
+                        )
+                    }
+                    IconButton(
+                        onClick = {
+                            exportLauncher.launch(exportFileName)
+                        }
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Save,
+                            contentDescription = "导出课程表"
                         )
                     }
                     // 下载模板按钮
