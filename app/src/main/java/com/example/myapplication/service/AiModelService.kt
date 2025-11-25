@@ -7,16 +7,22 @@ import android.net.Uri
 import okhttp3.*
 import okhttp3.MediaType.Companion.toMediaTypeOrNull
 import okhttp3.RequestBody.Companion.toRequestBody
+import okhttp3.RequestBody.Companion.asRequestBody
 import org.json.JSONArray
 import org.json.JSONObject
 import java.io.ByteArrayOutputStream
+import java.io.File
+import java.io.FileOutputStream
 import java.io.InputStream
 import java.net.SocketTimeoutException
 import java.util.concurrent.TimeUnit
 import android.util.Base64
+import android.util.Log
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.withContext
+import android.webkit.MimeTypeMap
+import kotlin.math.min
 
 /**
  * 大模型服务类
@@ -29,8 +35,10 @@ class AiModelService(private val context: Context) {
     // 注意：在生产环境中，应该从安全的地方读取API密钥，不要硬编码
     private val apiKey: String = "e25e651255de49b3a361395dda2b4c36.ErWVuTcvHPsqGmlX"
     private val chatCompletionUrl: String = "https://open.bigmodel.cn/api/paas/v4/chat/completions"
+    private val speechToTextUrl: String = "https://open.bigmodel.cn/api/paas/v4/audio/transcriptions"
     private val visionModel = "glm-4v"
     private val textModel = "glm-4-flash"
+    private val sttModel = "glm-asr"
 
     private val httpClient by lazy {
         OkHttpClient.Builder()
@@ -53,30 +61,59 @@ class AiModelService(private val context: Context) {
         imageBase64: String? = null,
         audioTranscript: String? = null
     ): Result<KnowledgeOutline> = withContext(Dispatchers.IO) {
-        try {            
+        try {
+            // 验证是否有内容
+            val hasText = textContent.isNotBlank()
+            val hasImage = imageBase64 != null
+            val hasAudio = audioTranscript != null && audioTranscript.isNotBlank()
+            
+            if (!hasText && !hasImage && !hasAudio) {
+                return@withContext Result.failure(
+                    Exception("请提供文本、图片或音频内容以生成知识提纲")
+                )
+            }
+            
             // 构建提示词
             val systemPrompt = """你是一位专业的教学助手，擅长将课堂内容整理成结构清晰、重点突出的知识提纲。
-请根据提供的课堂内容（包括文本、图片和录音转文字），生成以下格式的知识提纲：
+请根据提供的课堂内容（包括文本、图片和录音转文字），生成以下格式的JSON知识提纲：
 
-1. 总结：用2-3句话概括主要内容
-2. 结构化大纲：按主题分层次组织，每个主题包含3-5个要点
-3. 关键知识点：提取5-8个最重要的概念或公式
-4. 思维导图节点：识别主要概念及其关联
-5. 章节关联建议：如果内容涉及特定课程章节，请标注
+{
+  "summary": "用2-3句话概括主要内容",
+  "structuredOutline": [
+    {
+      "title": "主题标题",
+      "bulletPoints": ["要点1", "要点2", "要点3"]
+    }
+  ],
+  "keyPoints": ["关键知识点1", "关键知识点2"],
+  "mindMapBranches": [
+    {
+      "title": "中心主题",
+      "nodes": ["节点1", "节点2"]
+    }
+  ],
+  "chapterLinks": [
+    {
+      "courseName": "课程名",
+      "chapterLabel": "章节",
+      "reason": "关联理由"
+    }
+  ]
+}
 
-请确保提纲结构清晰、重点突出、便于复习。"""
+请确保返回严格的JSON格式，不要包含任何其他文本。"""
             
             val userContent = buildString {
-                if (textContent.isNotBlank()) {
+                if (hasText) {
                     append("文本内容：\n$textContent\n\n")
                 }
-                if (audioTranscript != null && audioTranscript.isNotBlank()) {
+                if (hasAudio) {
                     append("录音转文字：\n$audioTranscript\n\n")
                 }
-                if (imageBase64 != null) {
+                if (hasImage) {
                     append("已上传图片，请识别图片中的文字和内容。\n\n")
                 }
-                append("请生成结构化的知识提纲。")
+                append("请根据以上内容生成结构化的JSON格式知识提纲。")
             }
             
             val messages = JSONArray().apply {
@@ -121,7 +158,13 @@ class AiModelService(private val context: Context) {
                 .post(requestBody.toString().toRequestBody("application/json".toMediaTypeOrNull()))
                 .build()
             
+            Log.d("AiModelService", "generateKnowledgeOutline model=${if (imageBase64 != null) visionModel else textModel}")
+            Log.d("AiModelService", "requestBody=$requestBody")
+            
             val response = executeWithRetry(request)
+            val responseBody = response.body?.string().orEmpty()
+            
+            Log.d("AiModelService", "responseCode=${response.code}, body=$responseBody")
             
             if (!response.isSuccessful) {
                 return@withContext Result.failure(
@@ -129,13 +172,11 @@ class AiModelService(private val context: Context) {
                 )
             }
             
-            val responseBody = response.body?.string() ?: ""
             val jsonResponse = JSONObject(responseBody)
             val choices = jsonResponse.getJSONArray("choices")
             val message = choices.getJSONObject(0).getJSONObject("message")
             val content = message.getString("content")
             
-            // 解析大模型返回的内容为结构化格式
             val outline = parseModelResponse(content)
             
             Result.success(outline)
@@ -196,14 +237,19 @@ class AiModelService(private val context: Context) {
                 .post(requestBody.toString().toRequestBody("application/json".toMediaTypeOrNull()))
                 .build()
             
+            Log.d("AiModelService", "generateAssignmentHint model=$textModel")
+            Log.d("AiModelService", "requestBody=$requestBody")
+            
             val response = executeWithRetry(request)
+            val responseBody = response.body?.string().orEmpty()
+            
+            Log.d("AiModelService", "responseCode=${response.code}, body=$responseBody")
             if (!response.isSuccessful) {
                 return@withContext Result.failure(
                     Exception("提示生成失败: ${response.code} ${response.message}")
                 )
             }
             
-            val responseBody = response.body?.string() ?: ""
             val jsonResponse = JSONObject(responseBody)
             val choices = jsonResponse.getJSONArray("choices")
             val message = choices.getJSONObject(0).getJSONObject("message").getString("content")
@@ -237,19 +283,96 @@ class AiModelService(private val context: Context) {
     }
     
     /**
-     * 语音转文字（使用OpenAI Whisper API）
+     * 语音转文字（使用智谱语音识别API）
      */
-    suspend fun transcribeAudio(uri: Uri): Result<String> = Result.failure(
-        IllegalStateException("当前未集成智谱语音识别，请先将录音转换为文字后再上传。")
-    )
+    suspend fun transcribeAudio(uri: Uri): Result<String> = withContext(Dispatchers.IO) {
+        var tempFile: File? = null
+        try {
+            tempFile = copyUriToTempFile(uri)
+                ?: return@withContext Result.failure(Exception("无法读取音频文件"))
+
+            val mimeType = getMimeType(uri) ?: "audio/mpeg"
+            val normalizedMimeType = mimeType.lowercase()
+
+            val supportedFormats = listOf("audio/mpeg", "audio/mp3", "audio/wav", "audio/wave")
+            if (supportedFormats.none { normalizedMimeType.contains(it.substringAfter("/")) }) {
+                tempFile.delete()
+                return@withContext Result.failure(
+                    Exception("不支持的音频格式: $mimeType。请使用 MP3 或 WAV 格式")
+                )
+            }
+
+            val requestBody = tempFile.asRequestBody(mimeType.toMediaTypeOrNull())
+            val multipartBody = MultipartBody.Builder()
+                .setType(MultipartBody.FORM)
+                .addFormDataPart("model", sttModel)
+                .addFormDataPart("file", tempFile.name, requestBody)
+                .build()
+
+            val request = Request.Builder()
+                .url(speechToTextUrl)
+                .addHeader("Authorization", "Bearer $apiKey")
+                .post(multipartBody)
+                .build()
+
+            Log.d("AiModelService", "transcribeAudio request file=${tempFile.name}, mimeType=$mimeType")
+
+            val response = executeWithRetry(request)
+            val responseBody = response.body?.string().orEmpty()
+
+            Log.d("AiModelService", "transcribeAudio responseCode=${response.code}, body=$responseBody")
+
+            if (!response.isSuccessful) {
+                tempFile.delete()
+                val errorMessage = try {
+                    val errorJson = JSONObject(responseBody)
+                    val error = errorJson.optJSONObject("error")
+                    error?.optString("message") ?: responseBody
+                } catch (e: Exception) {
+                    responseBody
+                }
+                return@withContext Result.failure(Exception("语音识别失败: $errorMessage"))
+            }
+
+            tempFile.delete()
+
+            val json = JSONObject(responseBody)
+            val text = json.optString("text").ifBlank {
+                json.optString("result")
+            }
+
+            if (text.isBlank()) {
+                Result.failure(Exception("语音识别返回为空"))
+            } else {
+                Result.success(text)
+            }
+        } catch (e: Exception) {
+            tempFile?.delete()
+            Log.e("AiModelService", "transcribeAudio error: ${e.message}", e)
+            Result.failure(e)
+        }
+    }
     
     /**
      * 解析大模型返回的内容为结构化格式
      */
     private fun parseModelResponse(content: String): KnowledgeOutline {
+        // 检查模型是否在请求内容
+        if (content.contains("需要") && (content.contains("内容") || content.contains("提供"))) {
+            Log.w("AiModelService", "模型返回提示需要内容: $content")
+            throw Exception("模型提示需要提供内容。请确保已输入文本、上传图片或成功转录音频。")
+        }
+        
         // 尝试解析JSON格式的响应
         return try {
-            val json = JSONObject(content)
+            // 尝试提取JSON部分（可能被markdown代码块包裹）
+            val jsonContent = content.trim()
+                .removePrefix("```json")
+                .removePrefix("```")
+                .removeSuffix("```")
+                .trim()
+            
+            val json = JSONObject(jsonContent)
             KnowledgeOutline(
                 summary = json.optString("summary", ""),
                 structuredOutline = parseOutlineSections(json.optJSONArray("structuredOutline")),
@@ -258,12 +381,12 @@ class AiModelService(private val context: Context) {
                 chapterLinks = parseChapterLinks(json.optJSONArray("chapterLinks"))
             )
         } catch (e: Exception) {
-            // 如果不是JSON格式，尝试从文本中提取
-            parseTextResponse(content)
+            Log.e("AiModelService", "模型未返回标准JSON: $content", e)
+            parseTextResponse(content, reason = "AI 没有返回结构化笔记")
         }
     }
     
-    private fun parseTextResponse(text: String): KnowledgeOutline {
+    private fun parseTextResponse(text: String, reason: String? = null): KnowledgeOutline {
         // 简单的文本解析逻辑
         val lines = text.split("\n").map { it.trim() }.filter { it.isNotBlank() }
         
@@ -310,8 +433,33 @@ class AiModelService(private val context: Context) {
             outlineSections.add(it.copy(bulletPoints = currentSectionPoints))
         }
         
+        val fallbackSummary = summary.ifBlank {
+            when {
+                reason != null -> "$reason：$text"
+                text.isNotBlank() -> text
+                else -> "AI 返回：$text"
+            }
+        }
+        
+        if (outlineSections.isEmpty() && lines.isNotEmpty()) {
+            outlineSections.add(
+                OutlineSection(
+                    title = "图片识别内容",
+                    bulletPoints = lines
+                )
+            )
+        }
+        
+        if (keyPoints.isEmpty()) {
+            if (lines.isNotEmpty()) {
+                keyPoints.addAll(lines.take(8))
+            } else {
+                keyPoints.add(text)
+            }
+        }
+        
         return KnowledgeOutline(
-            summary = summary.ifBlank { "已生成知识提纲" },
+            summary = fallbackSummary,
             structuredOutline = outlineSections,
             keyPoints = keyPoints.take(8),
             mindMapBranches = mindMapBranches,
@@ -394,6 +542,35 @@ class AiModelService(private val context: Context) {
         }
         throw lastError ?: IllegalStateException("未知错误")
     }
+
+    private fun copyUriToTempFile(uri: Uri): File? {
+        return try {
+            val cacheDir = File(context.cacheDir, "ai_audio").apply { if (!exists()) mkdirs() }
+            val extension = MimeTypeMap.getSingleton()
+                .getExtensionFromMimeType(getMimeType(uri)) ?: "m4a"
+            val tempFile = File.createTempFile("audio_", ".$extension", cacheDir)
+            context.contentResolver.openInputStream(uri)?.use { input ->
+                FileOutputStream(tempFile).use { output ->
+                    input.copyTo(output)
+                }
+            } ?: return null
+            tempFile
+        } catch (e: Exception) {
+            Log.e("AiModelService", "copyUriToTempFile error ${e.message}", e)
+            null
+        }
+    }
+
+    private fun getMimeType(uri: Uri): String? {
+        return context.contentResolver.getType(uri)
+            ?: uri.path?.let { path ->
+                val extension = path.substringAfterLast('.', "")
+                if (extension.isNotBlank()) {
+                    MimeTypeMap.getSingleton().getMimeTypeFromExtension(extension.lowercase())
+                } else null
+            }
+    }
+    
 }
 
 /**

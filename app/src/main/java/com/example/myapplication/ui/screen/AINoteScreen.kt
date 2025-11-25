@@ -83,18 +83,6 @@ fun AINoteScreen(navController: NavHostController) {
         }
     }
 
-    val filePickerLauncher = rememberLauncherForActivityResult(
-        contract = ActivityResultContracts.GetContent()
-    ) { uri ->
-        uri?.let {
-            attachments += AiNoteAttachment(
-                uri = it.toString(),
-                displayName = resolveDisplayName(context, it) ?: "文件",
-                type = AttachmentType.TEXT
-            )
-        }
-    }
-
     Scaffold(
         topBar = {
             TopAppBar(
@@ -184,21 +172,21 @@ fun AINoteScreen(navController: NavHostController) {
                         modifier = Modifier
                             .fillMaxWidth()
                             .padding(20.dp),
-                        verticalArrangement = Arrangement.spacedBy(16.dp)
-                    ) {
-                        Text(
+            verticalArrangement = Arrangement.spacedBy(16.dp)
+        ) {
+            Text(
                             text = "输入内容",
                             style = MaterialTheme.typography.titleMedium,
                             fontWeight = FontWeight.Bold,
                             color = MaterialTheme.colorScheme.primary
-                        )
-                        
-                        OutlinedTextField(
-                            value = noteText,
-                            onValueChange = { noteText = it },
-                            label = { Text("课堂要点 / 听课随记") },
-                            modifier = Modifier
-                                .fillMaxWidth()
+            )
+
+            OutlinedTextField(
+                value = noteText,
+                onValueChange = { noteText = it },
+                label = { Text("课堂要点 / 听课随记") },
+                modifier = Modifier
+                    .fillMaxWidth()
                                 .heightIn(min = 180.dp),
                             maxLines = 10,
                             shape = RoundedCornerShape(12.dp),
@@ -206,63 +194,58 @@ fun AINoteScreen(navController: NavHostController) {
                                 focusedBorderColor = MaterialTheme.colorScheme.primary,
                                 unfocusedBorderColor = MaterialTheme.colorScheme.outline.copy(alpha = 0.3f)
                             )
+            )
+
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(14.dp)
+            ) {
+                val buttonShape = RoundedCornerShape(18.dp)
+                ElevatedButton(
+                    onClick = { imagePickerLauncher.launch("image/*") },
+                    modifier = Modifier
+                        .weight(1f)
+                        .height(120.dp),
+                    shape = buttonShape,
+                    colors = ButtonDefaults.elevatedButtonColors(
+                        containerColor = MaterialTheme.colorScheme.primary,
+                        contentColor = MaterialTheme.colorScheme.onPrimary
+                    )
+                ) {
+                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                        Icon(
+                            Icons.Default.Image,
+                            contentDescription = "上传图片",
+                            modifier = Modifier.size(30.dp)
                         )
+                        Spacer(modifier = Modifier.height(8.dp))
+                        Text("上传图片", fontWeight = FontWeight.SemiBold)
+                    }
+                }
+                ElevatedButton(
+                    onClick = { audioPickerLauncher.launch("audio/*") },
+                    modifier = Modifier
+                        .weight(1f)
+                        .height(120.dp),
+                    shape = buttonShape,
+                    colors = ButtonDefaults.elevatedButtonColors(
+                        containerColor = MaterialTheme.colorScheme.secondary,
+                        contentColor = MaterialTheme.colorScheme.onSecondary
+                    )
+                ) {
+                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                        Icon(
+                            Icons.Default.AudioFile,
+                            contentDescription = "上传音频",
+                            modifier = Modifier.size(30.dp)
+                        )
+                        Spacer(modifier = Modifier.height(8.dp))
+                        Text("上传音频", fontWeight = FontWeight.SemiBold)
+                    }
+                }
+            }
 
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.spacedBy(12.dp)
-                        ) {
-                            FilledTonalButton(
-                                onClick = { imagePickerLauncher.launch("image/*") },
-                                modifier = Modifier
-                                    .weight(1f)
-                                    .aspectRatio(1f),
-                                shape = RoundedCornerShape(12.dp),
-                                colors = ButtonDefaults.filledTonalButtonColors(
-                                    containerColor = MaterialTheme.colorScheme.secondaryContainer
-                                )
-                            ) {
-                                Icon(
-                                    Icons.Default.Image,
-                                    contentDescription = "添加图片",
-                                    modifier = Modifier.size(28.dp)
-                                )
-                            }
-                            FilledTonalButton(
-                                onClick = { audioPickerLauncher.launch("audio/*") },
-                                modifier = Modifier
-                                    .weight(1f)
-                                    .aspectRatio(1f),
-                                shape = RoundedCornerShape(12.dp),
-                                colors = ButtonDefaults.filledTonalButtonColors(
-                                    containerColor = MaterialTheme.colorScheme.tertiaryContainer
-                                )
-                            ) {
-                                Icon(
-                                    Icons.Default.AudioFile,
-                                    contentDescription = "导入录音",
-                                    modifier = Modifier.size(28.dp)
-                                )
-                            }
-                            FilledTonalButton(
-                                onClick = { filePickerLauncher.launch("*/*") },
-                                modifier = Modifier
-                                    .weight(1f)
-                                    .aspectRatio(1f),
-                                shape = RoundedCornerShape(12.dp),
-                                colors = ButtonDefaults.filledTonalButtonColors(
-                                    containerColor = MaterialTheme.colorScheme.primaryContainer
-                                )
-                            ) {
-                                Icon(
-                                    Icons.Default.Upload,
-                                    contentDescription = "上传文件",
-                                    modifier = Modifier.size(28.dp)
-                                )
-                            }
-                        }
-
-                        if (attachments.isNotEmpty()) {
+            if (attachments.isNotEmpty()) {
                             Divider()
                             Text(
                                 text = "已选择的素材",
@@ -274,7 +257,7 @@ fun AINoteScreen(navController: NavHostController) {
                                 horizontalArrangement = Arrangement.spacedBy(8.dp),
                                 modifier = Modifier.fillMaxWidth()
                             ) {
-                                items(attachments) { attachment ->
+                    items(attachments) { attachment ->
                                     Card(
                                         modifier = Modifier
                                             .widthIn(max = 200.dp),
@@ -299,9 +282,9 @@ fun AINoteScreen(navController: NavHostController) {
                                                 modifier = Modifier.size(20.dp),
                                                 tint = MaterialTheme.colorScheme.primary
                                             )
-                                            Text(
-                                                text = attachment.displayName,
-                                                maxLines = 1,
+                                Text(
+                                    text = attachment.displayName,
+                                    maxLines = 1,
                                                 overflow = TextOverflow.Ellipsis,
                                                 style = MaterialTheme.typography.bodySmall,
                                                 modifier = Modifier.weight(1f)
@@ -326,8 +309,8 @@ fun AINoteScreen(navController: NavHostController) {
                 }
 
                 // 生成按钮
-                Button(
-                    onClick = {
+            Button(
+                onClick = {
                         viewModel.analyzeNotes(noteText, attachments.toList(), context)
                     },
                     modifier = Modifier
@@ -356,9 +339,9 @@ fun AINoteScreen(navController: NavHostController) {
                         style = MaterialTheme.typography.titleLarge,
                         fontWeight = FontWeight.Bold
                     )
-                }
+            }
 
-                if (noteState.isProcessing) {
+            if (noteState.isProcessing) {
                     LinearProgressIndicator(
                         modifier = Modifier
                             .fillMaxWidth()
@@ -367,9 +350,9 @@ fun AINoteScreen(navController: NavHostController) {
                         color = MaterialTheme.colorScheme.primary,
                         trackColor = MaterialTheme.colorScheme.primaryContainer
                     )
-                }
+            }
 
-                noteState.errorMessage?.let {
+            noteState.errorMessage?.let {
                     Card(
                         modifier = Modifier.fillMaxWidth(),
                         shape = RoundedCornerShape(12.dp),
@@ -395,15 +378,15 @@ fun AINoteScreen(navController: NavHostController) {
                             }
                         }
                     }
-                }
+            }
 
-                noteState.insights?.let { insights ->
+            noteState.insights?.let { insights ->
                     Spacer(modifier = Modifier.height(8.dp))
-                    NoteSummaryCard(insights.summary)
+                NoteSummaryCard(insights.summary)
                     SectionList(title = "📋 结构化大纲", sections = insights.structuredOutline)
-                    MindMapSection(branches = insights.mindMapBranches)
-                    KeyPointsSection(insights.keyPoints)
-                    ChapterLinkSection(insights.chapterLinks)
+                MindMapSection(branches = insights.mindMapBranches)
+                KeyPointsSection(insights.keyPoints)
+                ChapterLinkSection(insights.chapterLinks)
                 }
             }
         }
@@ -438,12 +421,12 @@ private fun NoteSummaryCard(summary: String) {
                     color = MaterialTheme.colorScheme.onSecondaryContainer
                 )
             }
-            Text(
-                text = summary,
+        Text(
+            text = summary,
                 style = MaterialTheme.typography.bodyLarge,
                 color = MaterialTheme.colorScheme.onSecondaryContainer,
                 lineHeight = MaterialTheme.typography.bodyLarge.lineHeight * 1.2
-            )
+        )
         }
     }
 }
@@ -503,8 +486,8 @@ private fun SectionList(title: String, sections: List<OutlineSection>) {
                         )
                     }
                     Divider()
-                    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                        section.bulletPoints.forEachIndexed { index, point ->
+    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    section.bulletPoints.forEachIndexed { index, point ->
                             Row(
                                 horizontalArrangement = Arrangement.spacedBy(12.dp),
                                 modifier = Modifier.fillMaxWidth()
@@ -613,7 +596,7 @@ private fun KeyPointsSection(keyPoints: List<String>) {
                 .padding(18.dp),
             verticalArrangement = Arrangement.spacedBy(10.dp)
         ) {
-            keyPoints.forEachIndexed { index, point ->
+        keyPoints.forEachIndexed { index, point ->
                 Row(
                     horizontalArrangement = Arrangement.spacedBy(12.dp),
                     modifier = Modifier.fillMaxWidth()

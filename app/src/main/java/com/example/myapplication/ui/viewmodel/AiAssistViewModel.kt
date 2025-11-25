@@ -79,11 +79,24 @@ class AiAssistViewModel(
                 
                 // 处理音频：转文字
                 var audioTranscript: String? = null
+                var audioError: String? = null
                 val audioAttachment = attachments.firstOrNull { it.type == com.example.myapplication.domain.ai.AttachmentType.AUDIO }
                 if (audioAttachment != null) {
                     val uri = android.net.Uri.parse(audioAttachment.uri)
                     val transcriptResult = aiService.transcribeAudio(uri)
-                    audioTranscript = transcriptResult.getOrNull()
+                    transcriptResult.onSuccess { transcript ->
+                        audioTranscript = transcript
+                    }.onFailure { error ->
+                        audioError = error.message
+                        // 如果只有音频没有其他内容，直接返回错误
+                        if (noteText.isBlank() && imageBase64 == null) {
+                            _noteUiState.value = AiNoteUiState(
+                                isProcessing = false,
+                                errorMessage = "音频转文字失败：${error.message}"
+                            )
+                            return@launch
+                        }
+                    }
                 }
                 
                 // 调用大模型生成知识提纲

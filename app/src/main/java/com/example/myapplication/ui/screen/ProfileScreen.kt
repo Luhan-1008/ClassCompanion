@@ -57,17 +57,17 @@ fun ProfileScreen(navController: NavHostController) {
     val viewModel: UserViewModel = viewModel(
         factory = UserViewModelFactory(repository, remoteRepository)
     )
-    
+
     val currentUser by viewModel.currentUser.collectAsState()
     var showLogoutDialog by remember { mutableStateOf(false) }
     var avatarBitmap by remember { mutableStateOf<ImageBitmap?>(null) }
     val scope = rememberCoroutineScope()
-    
+
     // 加载当前用户信息
     LaunchedEffect(Unit) {
         viewModel.loadCurrentUser()
     }
-    
+
     // 加载头像
     LaunchedEffect(currentUser?.avatarUrl) {
         scope.launch {
@@ -88,7 +88,7 @@ fun ProfileScreen(navController: NavHostController) {
             }
         }
     }
-    
+
     // 图片选择器
     val imagePickerLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.GetContent()
@@ -103,9 +103,9 @@ fun ProfileScreen(navController: NavHostController) {
                         
                         // 保存头像URI到用户信息
                         val updatedUser = currentUser?.copy(avatarUrl = it.toString())
-                        if (updatedUser != null) {
-                            withContext(Dispatchers.IO) {
-                                repository.updateUser(updatedUser)
+                            if (updatedUser != null) {
+                                withContext(Dispatchers.IO) {
+                                    repository.updateUser(updatedUser)
                             }
                         }
                     }
@@ -115,11 +115,11 @@ fun ProfileScreen(navController: NavHostController) {
             }
         }
     }
-    
+
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { 
+                title = {
                     Text(
                         text = "我的",
                         style = MaterialTheme.typography.headlineSmall,
@@ -315,33 +315,33 @@ fun ProfileScreen(navController: NavHostController) {
                         fontWeight = FontWeight.Bold,
                         modifier = Modifier.padding(bottom = 8.dp)
                     )
-                    
-                    NavigationMenuItem(
-                        icon = Icons.Default.Favorite,
-                        title = "AI笔记助手",
-                        description = "智能生成知识提纲"
-                    ) {
-                        navController.navigate("ai_note")
-                    }
-                    
-                    NavigationMenuItem(
-                        icon = Icons.Default.Home,
-                        title = "作业辅导提示",
-                        description = "获取解题思路和提示"
-                    ) {
-                        navController.navigate("assignment_help")
-                    }
-                    
-                    NavigationMenuItem(
-                        icon = Icons.Default.List,
-                        title = "学习分析",
-                        description = "查看学习报告和建议"
-                    ) {
-                        navController.navigate("learning_analytics")
+
+                        NavigationMenuItem(
+                            icon = Icons.Default.Favorite,
+                            title = "AI笔记助手",
+                            description = "智能生成知识提纲"
+                        ) {
+                            navController.navigate("ai_note")
+                        }
+
+                        NavigationMenuItem(
+                            icon = Icons.Default.Home,
+                            title = "作业辅导提示",
+                            description = "获取解题思路和提示"
+                        ) {
+                            navController.navigate("assignment_help")
+                        }
+
+                        NavigationMenuItem(
+                            icon = Icons.Default.List,
+                            title = "学习分析",
+                            description = "查看学习报告和建议"
+                        ) {
+                            navController.navigate("learning_analytics")
                     }
                 }
             }
-            
+
             // 退出登录按钮
             Surface(
                 modifier = Modifier
@@ -350,84 +350,84 @@ fun ProfileScreen(navController: NavHostController) {
                 shape = RoundedCornerShape(16.dp),
                 color = MaterialTheme.colorScheme.surface
             ) {
-                Button(
-                    onClick = {
-                        showLogoutDialog = true
-                    },
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(16.dp)
-                        .height(56.dp),
-                    shape = RoundedCornerShape(12.dp),
-                    colors = ButtonDefaults.buttonColors(
-                        containerColor = MaterialTheme.colorScheme.error,
-                        contentColor = Color.White
-                    )
-                ) {
-                    Icon(
-                        imageVector = Icons.Default.ExitToApp,
-                        contentDescription = "退出登录",
-                        modifier = Modifier.size(24.dp)
-                    )
-                    Spacer(modifier = Modifier.width(8.dp))
-                    Text(
-                        text = "退出登录",
-                        style = MaterialTheme.typography.titleMedium,
-                        fontWeight = FontWeight.Bold
-                    )
-                }
+                    Button(
+                        onClick = {
+                            showLogoutDialog = true
+                        },
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(16.dp)
+                            .height(56.dp),
+                        shape = RoundedCornerShape(12.dp),
+                        colors = ButtonDefaults.buttonColors(
+                            containerColor = MaterialTheme.colorScheme.error,
+                            contentColor = Color.White
+                        )
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.ExitToApp,
+                            contentDescription = "退出登录",
+                            modifier = Modifier.size(24.dp)
+                        )
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text(
+                            text = "退出登录",
+                            style = MaterialTheme.typography.titleMedium,
+                            fontWeight = FontWeight.Bold
+                        )
+                    }
             }
         }
-    }
-    
-    // 退出登录确认对话框
-    if (showLogoutDialog) {
-        AlertDialog(
+        }
+
+        // 退出登录确认对话框
+        if (showLogoutDialog) {
+            AlertDialog(
             onDismissRequest = { 
                 showLogoutDialog = false
             },
-            title = {
-                Text(
-                    text = "确认退出",
-                    style = MaterialTheme.typography.titleLarge,
-                    fontWeight = FontWeight.Bold
-                )
-            },
-            text = {
-                Text(
-                    text = "确定要退出登录吗？退出后需要重新登录才能使用应用。",
-                    style = MaterialTheme.typography.bodyMedium
-                )
-            },
-            confirmButton = {
-                Button(
-                    onClick = {
-                        showLogoutDialog = false
-                        viewModel.logout()
-                        navController.navigate(Screen.Login.route) {
-                            popUpTo(0) { inclusive = true }
-                        }
-                    },
-                    colors = ButtonDefaults.buttonColors(
-                        containerColor = MaterialTheme.colorScheme.error,
-                        contentColor = Color.White
+                title = {
+                    Text(
+                        text = "确认退出",
+                        style = MaterialTheme.typography.titleLarge,
+                        fontWeight = FontWeight.Bold
                     )
-                ) {
-                    Text("退出")
-                }
-            },
-            dismissButton = {
-                TextButton(
+                },
+                text = {
+                    Text(
+                        text = "确定要退出登录吗？退出后需要重新登录才能使用应用。",
+                        style = MaterialTheme.typography.bodyMedium
+                    )
+                },
+                confirmButton = {
+                    Button(
+                        onClick = {
+                            showLogoutDialog = false
+                            viewModel.logout()
+                            navController.navigate(Screen.Login.route) {
+                                popUpTo(0) { inclusive = true }
+                            }
+                        },
+                        colors = ButtonDefaults.buttonColors(
+                            containerColor = MaterialTheme.colorScheme.error,
+                            contentColor = Color.White
+                        )
+                    ) {
+                        Text("退出")
+                    }
+                },
+                dismissButton = {
+                    TextButton(
                     onClick = { 
                         showLogoutDialog = false
                     }
-                ) {
-                    Text("取消")
-                }
-            },
-            containerColor = MaterialTheme.colorScheme.surface,
-            shape = RoundedCornerShape(20.dp)
-        )
+                    ) {
+                        Text("取消")
+                    }
+                },
+                containerColor = MaterialTheme.colorScheme.surface,
+                shape = RoundedCornerShape(20.dp)
+            )
     }
 }
 
