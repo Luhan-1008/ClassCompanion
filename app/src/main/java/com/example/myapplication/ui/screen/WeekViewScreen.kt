@@ -17,6 +17,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import com.example.myapplication.data.model.Course
 import java.text.SimpleDateFormat
 import java.util.*
@@ -33,43 +34,37 @@ fun WeekViewScreen(
     val periodSlots = generatePeriodSlots()
     val weekNumber = calculateAcademicWeek(currentWeekStart)
     
+    // 计算本周日期
+    val weekDates = remember(currentWeekStart) {
+        val calendar = currentWeekStart.clone() as Calendar
+        (0..6).map {
+            val date = calendar.time
+            calendar.add(Calendar.DAY_OF_YEAR, 1)
+            SimpleDateFormat("MM.dd", Locale.getDefault()).format(date)
+        }
+    }
+    
+    // 计算今天是周几（如果是本周）
+    val todayIndex = remember(currentWeekStart) {
+        val today = Calendar.getInstance()
+        // 重置时间部分以进行准确的日期比较
+        val current = currentWeekStart.clone() as Calendar
+        current.set(Calendar.HOUR_OF_DAY, 0); current.set(Calendar.MINUTE, 0); current.set(Calendar.SECOND, 0); current.set(Calendar.MILLISECOND, 0)
+        
+        val todayZero = Calendar.getInstance()
+        todayZero.set(Calendar.HOUR_OF_DAY, 0); todayZero.set(Calendar.MINUTE, 0); todayZero.set(Calendar.SECOND, 0); todayZero.set(Calendar.MILLISECOND, 0)
+        
+        val diffMillis = todayZero.timeInMillis - current.timeInMillis
+        val diffDays = (diffMillis / (24 * 60 * 60 * 1000)).toInt()
+        
+        if (diffDays in 0..6) diffDays else -1
+    }
+    
     Column(
         modifier = modifier
             .fillMaxSize()
             .background(MaterialTheme.colorScheme.background)
     ) {
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(bottom = 8.dp),
-            horizontalArrangement = Arrangement.SpaceBetween,
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            Column {
-                Text(
-                    text = "周视图",
-                    style = MaterialTheme.typography.titleLarge,
-                    fontWeight = FontWeight.Bold
-                )
-                Text(
-                    text = formatWeekRange(currentWeekStart),
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
-            }
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                IconButton(onClick = { currentWeekStart = getPreviousWeek(currentWeekStart) }) {
-                    Text("◀", style = MaterialTheme.typography.titleLarge)
-                }
-                TextButton(onClick = { currentWeekStart = getCurrentWeekStart() }) {
-                    Text("第${weekNumber}周")
-                }
-                IconButton(onClick = { currentWeekStart = getNextWeek(currentWeekStart) }) {
-                    Text("▶", style = MaterialTheme.typography.titleLarge)
-                }
-            }
-        }
-        
         Card(
             modifier = Modifier.fillMaxWidth(),
             colors = CardDefaults.cardColors(
@@ -91,23 +86,54 @@ fun WeekViewScreen(
                             .width(56.dp),
                         contentAlignment = Alignment.Center
                     ) {
-                        Text(
-                            text = "节次",
-                            style = MaterialTheme.typography.labelMedium,
-                            fontWeight = FontWeight.Bold
-                        )
+                        Column(
+                            horizontalAlignment = Alignment.CenterHorizontally,
+                            verticalArrangement = Arrangement.spacedBy(2.dp)
+                        ) {
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.SpaceEvenly
+                            ) {
+                                Text(
+                                    text = "◀",
+                                    style = MaterialTheme.typography.labelSmall,
+                                    modifier = Modifier.clickable { currentWeekStart = getPreviousWeek(currentWeekStart) }
+                                )
+                                Text(
+                                    text = "▶",
+                                    style = MaterialTheme.typography.labelSmall,
+                                    modifier = Modifier.clickable { currentWeekStart = getNextWeek(currentWeekStart) }
+                                )
+                            }
+                            Text(
+                                text = "第${weekNumber}周",
+                                style = MaterialTheme.typography.labelSmall,
+                                fontWeight = FontWeight.Bold,
+                                modifier = Modifier.clickable { currentWeekStart = getCurrentWeekStart() }
+                            )
+                        }
                     }
-                    weekDays.forEach { day ->
+                    weekDays.forEachIndexed { index, day ->
+                        val isToday = index == todayIndex
                         Box(
                             modifier = Modifier
-                                .weight(1f),
+                                .weight(1f)
+                                .background(if (isToday) MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.2f) else Color.Transparent),
                             contentAlignment = Alignment.Center
                         ) {
-                            Text(
-                                text = day,
-                                style = MaterialTheme.typography.labelMedium,
-                                fontWeight = FontWeight.Bold
-                            )
+                            Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                                Text(
+                                    text = day,
+                                    style = MaterialTheme.typography.labelMedium,
+                                    fontWeight = if (isToday) FontWeight.Bold else FontWeight.Bold,
+                                    color = if (isToday) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface
+                                )
+                                Text(
+                                    text = weekDates.getOrElse(index) { "" },
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = if (isToday) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            }
                         }
                     }
                 }
@@ -116,12 +142,19 @@ fun WeekViewScreen(
                     modifier = Modifier.fillMaxSize()
                 ) {
                     items(periodSlots) { slot ->
-                        WeekViewRow(
-                            slot = slot,
-                            weekDays = weekDays,
-                            courses = courses,
-                            onCourseClick = onCourseClick
-                        )
+                        Column {
+                            WeekViewRow(
+                                slot = slot,
+                                weekDays = weekDays,
+                                courses = courses,
+                                todayIndex = todayIndex,
+                                onCourseClick = onCourseClick
+                            )
+                            // 5-6节（午休）和10-11节（晚饭）之间增加空隙
+                            if (slot.label == "5" || slot.label == "10") {
+                                Spacer(modifier = Modifier.height(16.dp))
+                            }
+                        }
                     }
                 }
             }
@@ -134,6 +167,7 @@ fun WeekViewRow(
     slot: PeriodSlot,
     weekDays: List<String>,
     courses: List<Course>,
+    todayIndex: Int,
     onCourseClick: (Course) -> Unit
 ) {
     val slotHeight = 56.dp * (slot.durationMinutes / 45f).coerceAtLeast(1f)
@@ -163,8 +197,10 @@ fun WeekViewRow(
                     fontWeight = FontWeight.Bold
                 )
                 Text(
-                    text = "${slot.start} - ${slot.end}",
+                    text = "${slot.start}\n${slot.end}",
                     style = MaterialTheme.typography.labelSmall,
+                    fontSize = 9.sp,
+                    lineHeight = 10.sp,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
             }
@@ -173,6 +209,7 @@ fun WeekViewRow(
         // 每天的课程格子
         weekDays.forEachIndexed { dayIndex, _ ->
             val dayOfWeek = dayIndex + 1
+            val isToday = dayIndex == todayIndex
             val coursesInSlot = courses.filter { course ->
                 course.dayOfWeek == dayOfWeek &&
                 isCourseInSlot(course.startTime, course.endTime, slot)
@@ -182,9 +219,10 @@ fun WeekViewRow(
                 modifier = Modifier
                     .weight(1f)
                     .fillMaxHeight()
+                    .background(if (isToday) MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.1f) else Color.Transparent)
                     .border(
                         width = 0.5.dp,
-                        color = MaterialTheme.colorScheme.outline.copy(alpha = 0.3f)
+                        color = MaterialTheme.colorScheme.outline.copy(alpha = 0.1f)
                     )
                     .clickable(enabled = coursesInSlot.isNotEmpty()) {
                         coursesInSlot.firstOrNull()?.let { onCourseClick(it) }
@@ -193,6 +231,7 @@ fun WeekViewRow(
                 coursesInSlot.forEach { course ->
                     CourseWeekCell(
                         course = course,
+                        isToday = isToday,
                         modifier = Modifier.fillMaxSize()
                     )
                 }
@@ -204,6 +243,7 @@ fun WeekViewRow(
 @Composable
 fun CourseWeekCell(
     course: Course,
+    isToday: Boolean = false,
     modifier: Modifier = Modifier
 ) {
     val courseColor = Color(android.graphics.Color.parseColor(course.color))
@@ -211,7 +251,8 @@ fun CourseWeekCell(
     Card(
         modifier = modifier
             .padding(2.dp)
-            .shadow(2.dp, shape = RoundedCornerShape(8.dp)),
+            .shadow(if (isToday) 4.dp else 2.dp, shape = RoundedCornerShape(8.dp))
+            .then(if (isToday) Modifier.border(1.5.dp, MaterialTheme.colorScheme.primary, RoundedCornerShape(8.dp)) else Modifier),
         shape = RoundedCornerShape(8.dp),
         colors = CardDefaults.cardColors(
             containerColor = courseColor.copy(alpha = 0.8f)
@@ -395,14 +436,20 @@ fun formatWeekRange(weekStart: Calendar): String {
 }
 
 fun generatePeriodSlots(): List<PeriodSlot> = listOf(
-    PeriodSlot("1", "08:00", "09:35"),
-    PeriodSlot("2", "09:50", "11:25"),
-    PeriodSlot("3", "11:35", "12:15"),
-    PeriodSlot("4", "14:00", "15:35"),
-    PeriodSlot("5", "15:50", "17:25"),
-    PeriodSlot("6", "17:35", "18:15"),
-    PeriodSlot("7", "19:00", "20:35"),
-    PeriodSlot("8", "20:45", "22:15")
+    PeriodSlot("1", "08:00", "08:45"),
+    PeriodSlot("2", "08:50", "09:35"),
+    PeriodSlot("3", "09:50", "10:35"),
+    PeriodSlot("4", "10:40", "11:25"),
+    PeriodSlot("5", "11:30", "12:15"),
+    PeriodSlot("6", "14:00", "14:45"),
+    PeriodSlot("7", "14:50", "15:35"),
+    PeriodSlot("8", "15:50", "16:35"),
+    PeriodSlot("9", "16:40", "17:25"),
+    PeriodSlot("10", "17:30", "18:15"),
+    PeriodSlot("11", "19:00", "19:45"),
+    PeriodSlot("12", "19:50", "20:35"),
+    PeriodSlot("13", "20:40", "21:25"),
+    PeriodSlot("14", "21:30", "22:45")
 )
 
 fun isCourseInSlot(courseStart: String, courseEnd: String, slot: PeriodSlot): Boolean {

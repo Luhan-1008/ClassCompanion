@@ -34,6 +34,8 @@ import com.example.myapplication.ui.viewmodel.AuthResult
 import com.example.myapplication.ui.viewmodel.UserViewModel
 import com.example.myapplication.ui.viewmodel.UserViewModelFactory
 
+import com.example.myapplication.session.TokenManager
+
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun RegisterScreen(navController: NavHostController) {
@@ -42,8 +44,9 @@ fun RegisterScreen(navController: NavHostController) {
     val repository = UserRepository(database.userDao())
     // 不使用后端，直接使用本地注册
     val remoteRepository = remember { null as RemoteUserRepository? }
+    val tokenManager = remember { TokenManager(context) }
     val viewModel: UserViewModel = viewModel(
-        factory = UserViewModelFactory(repository, remoteRepository)
+        factory = UserViewModelFactory(repository, remoteRepository, tokenManager)
     )
     
     var username by remember { mutableStateOf("") }

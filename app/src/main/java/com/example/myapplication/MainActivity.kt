@@ -17,6 +17,9 @@ import androidx.navigation.compose.rememberNavController
 import com.example.myapplication.ui.navigation.NavGraph
 import com.example.myapplication.ui.navigation.Screen
 import com.example.myapplication.ui.theme.MyApplicationTheme
+import androidx.compose.ui.platform.LocalContext
+import com.example.myapplication.session.CurrentSession
+import com.example.myapplication.session.TokenManager
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -32,6 +35,24 @@ class MainActivity : ComponentActivity() {
 
 @Composable
 fun MyApplicationApp() {
+    val context = LocalContext.current
+    val tokenManager = remember { TokenManager(context) }
+    
+    // 检查登录状态
+    val startDestination = remember {
+        val userId = tokenManager.getUserId()
+        if (userId > 0) {
+            CurrentSession.userId = userId
+            val token = tokenManager.getToken()
+            if (!token.isNullOrBlank()) {
+                CurrentSession.token = token
+            }
+            Screen.CourseSchedule.route
+        } else {
+            Screen.Login.route
+        }
+    }
+
     val navController = rememberNavController()
     val navBackStackEntry by navController.currentBackStackEntryAsState()
     val currentRoute = navBackStackEntry?.destination?.route
@@ -40,11 +61,11 @@ fun MyApplicationApp() {
     val showBottomNav = currentRoute != Screen.Login.route && currentRoute != Screen.Register.route
     
     // 获取当前选中的屏幕
-    val currentScreen = when (currentRoute) {
-        Screen.CourseSchedule.route -> Screen.CourseSchedule
-        Screen.Assignments.route -> Screen.Assignments
-        Screen.StudyGroups.route -> Screen.StudyGroups
-        Screen.Profile.route -> Screen.Profile
+    val currentScreen = when {
+        currentRoute == Screen.CourseSchedule.route -> Screen.CourseSchedule
+        currentRoute?.startsWith(Screen.Assignments.route) == true -> Screen.Assignments
+        currentRoute == Screen.StudyGroups.route -> Screen.StudyGroups
+        currentRoute == Screen.Profile.route -> Screen.Profile
         else -> Screen.CourseSchedule
     }
 
@@ -113,9 +134,9 @@ fun MyApplicationApp() {
             )
         }
     ) {
-        NavGraph(navController = navController)
+        NavGraph(navController = navController, startDestination = startDestination)
     }
     } else {
-        NavGraph(navController = navController)
+        NavGraph(navController = navController, startDestination = startDestination)
     }
 }
