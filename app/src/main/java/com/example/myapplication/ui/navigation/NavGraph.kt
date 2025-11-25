@@ -9,10 +9,10 @@ import androidx.navigation.navArgument
 import com.example.myapplication.ui.screen.*
 
 @Composable
-fun NavGraph(navController: NavHostController) {
+fun NavGraph(navController: NavHostController, startDestination: String = Screen.Login.route) {
     NavHost(
         navController = navController,
-        startDestination = Screen.Login.route
+        startDestination = startDestination
     ) {
         composable(Screen.Login.route) {
             LoginScreen(navController = navController)

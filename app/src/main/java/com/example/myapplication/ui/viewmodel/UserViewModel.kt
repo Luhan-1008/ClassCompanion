@@ -19,7 +19,8 @@ sealed class AuthResult {
 
 class UserViewModel(
     private val repository: UserRepository,
-    private val remoteRepository: RemoteUserRepository? = null
+    private val remoteRepository: RemoteUserRepository? = null,
+    private val tokenManager: com.example.myapplication.session.TokenManager
 ) : ViewModel() {
     private val _currentUser = MutableStateFlow<User?>(null)
     val currentUser: StateFlow<User?> = _currentUser.asStateFlow()
@@ -39,6 +40,8 @@ class UserViewModel(
                     if (resp.token.isNotBlank()) {
                         CurrentSession.token = resp.token
                         CurrentSession.userId = resp.userId
+                        tokenManager.saveToken(resp.token)
+                        tokenManager.saveUserId(resp.userId)
                         // 如果需要本地缓存用户，可尝试查询或插入本地用户
                         val localUser = repository.login(studentId, username, password)
                         _currentUser.value = localUser ?: User(username = username, password = password, studentId = studentId)
@@ -54,6 +57,7 @@ class UserViewModel(
                 if (user != null) {
                     // 设置会话信息
                     CurrentSession.userId = user.userId.toLong()
+                    tokenManager.saveUserId(user.userId.toLong())
                     _currentUser.value = user
                     _loginResult.value = AuthResult.Success
                 } else {
@@ -105,6 +109,7 @@ class UserViewModel(
                 if (userId > 0) {
                     // 注册成功后自动登录，设置会话信息
                     CurrentSession.userId = userId.toLong()
+                    tokenManager.saveUserId(userId.toLong())
                     _currentUser.value = user.copy(userId = userId.toInt())
                     _registerResult.value = AuthResult.Success
                 } else {
@@ -128,6 +133,7 @@ class UserViewModel(
         _currentUser.value = null
         CurrentSession.userId = null
         CurrentSession.token = null
+        tokenManager.clearSession()
     }
     
     fun loadCurrentUser() {
@@ -155,12 +161,13 @@ class UserViewModel(
 
 class UserViewModelFactory(
     private val repository: UserRepository,
-    private val remoteRepository: RemoteUserRepository? = null
+    private val remoteRepository: RemoteUserRepository? = null,
+    private val tokenManager: com.example.myapplication.session.TokenManager
 ) : ViewModelProvider.Factory {
     override fun <T : ViewModel> create(modelClass: Class<T>): T {
         if (modelClass.isAssignableFrom(UserViewModel::class.java)) {
             @Suppress("UNCHECKED_CAST")
-            return UserViewModel(repository, remoteRepository) as T
+            return UserViewModel(repository, remoteRepository, tokenManager) as T
         }
         throw IllegalArgumentException("Unknown ViewModel class")
     }

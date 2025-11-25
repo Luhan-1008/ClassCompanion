@@ -32,6 +32,8 @@ import com.example.myapplication.ui.viewmodel.UserViewModel
 import com.example.myapplication.ui.viewmodel.UserViewModelFactory
 import com.example.myapplication.work.ReminderScheduler
 
+import com.example.myapplication.session.TokenManager
+
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun LoginScreen(navController: NavHostController) {
@@ -40,8 +42,9 @@ fun LoginScreen(navController: NavHostController) {
     val repository = UserRepository(database.userDao())
     // 不使用后端，直接使用本地登录
     val remoteRepository = remember { null as RemoteUserRepository? }
+    val tokenManager = remember { TokenManager(context) }
     val viewModel: UserViewModel = viewModel(
-        factory = UserViewModelFactory(repository, remoteRepository)
+        factory = UserViewModelFactory(repository, remoteRepository, tokenManager)
     )
     
     var studentId by remember { mutableStateOf("") }

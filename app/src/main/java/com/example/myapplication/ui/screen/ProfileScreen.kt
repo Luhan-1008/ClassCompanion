@@ -47,6 +47,8 @@ import java.io.File
 import java.io.FileOutputStream
 import java.io.InputStream
 
+import com.example.myapplication.session.TokenManager
+
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun ProfileScreen(navController: NavHostController) {
@@ -54,8 +56,9 @@ fun ProfileScreen(navController: NavHostController) {
     val database = AppDatabase.getDatabase(context)
     val repository = UserRepository(database.userDao())
     val remoteRepository = remember { null as RemoteUserRepository? }
+    val tokenManager = remember { TokenManager(context) }
     val viewModel: UserViewModel = viewModel(
-        factory = UserViewModelFactory(repository, remoteRepository)
+        factory = UserViewModelFactory(repository, remoteRepository, tokenManager)
     )
     
     val currentUser by viewModel.currentUser.collectAsState()

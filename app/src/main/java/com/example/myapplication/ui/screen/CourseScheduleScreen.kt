@@ -28,6 +28,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.lifecycle.viewmodel.compose.viewModel
@@ -97,6 +98,22 @@ fun CourseScheduleScreen(navController: NavHostController) {
     val studyGroupRepository = remember { StudyGroupRepository(database.studyGroupDao()) }
     
     val weekDays = listOf("周一", "周二", "周三", "周四", "周五", "周六", "周日")
+    
+    // 计算本周日期
+    val weekDates = remember {
+        val calendar = Calendar.getInstance()
+        val dayOfWeek = calendar.get(Calendar.DAY_OF_WEEK)
+        // 将周日(1)转换为7，其他为dayOfWeek-1。周一(2) -> 1
+        val currentDayIndex = if (dayOfWeek == Calendar.SUNDAY) 7 else dayOfWeek - 1
+        // 移动到周一
+        calendar.add(Calendar.DAY_OF_YEAR, -(currentDayIndex - 1))
+        
+        (0..6).map { 
+            val date = calendar.time
+            calendar.add(Calendar.DAY_OF_YEAR, 1)
+            java.text.SimpleDateFormat("MM.dd", java.util.Locale.getDefault()).format(date)
+        }
+    }
     
     // 文件选择器 - 只接受Excel和CSV文件
     val filePickerLauncher = rememberLauncherForActivityResult(
@@ -318,11 +335,18 @@ fun CourseScheduleScreen(navController: NavHostController) {
                                     viewModel.getCoursesByDay(selectedDay)
                                 },
                                 label = {
-                                    Text(
-                                        day,
-                                        style = MaterialTheme.typography.labelMedium,
-                                        fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium
-                                    )
+                                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                                        Text(
+                                            day,
+                                            style = MaterialTheme.typography.labelMedium,
+                                            fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium
+                                        )
+                                        Text(
+                                            text = weekDates.getOrElse(index) { "" },
+                                            style = MaterialTheme.typography.labelSmall,
+                                            fontSize = 10.sp
+                                        )
+                                    }
                                 },
                                 modifier = Modifier.padding(vertical = 2.dp),
                                 shape = RoundedCornerShape(12.dp),
