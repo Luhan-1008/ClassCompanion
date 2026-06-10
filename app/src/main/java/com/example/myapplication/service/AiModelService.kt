@@ -1,0 +1,13176 @@
+package com.example.myapplication.service
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+import android.content.Context
+
+
+
+
+
+
+
+import android.content.Intent
+
+
+
+
+
+
+
+import android.graphics.Bitmap
+
+
+
+
+
+
+
+import android.graphics.BitmapFactory
+
+
+
+
+
+
+
+import android.net.Uri
+
+
+
+
+
+
+
+import android.os.Bundle
+
+
+
+
+
+
+
+import android.speech.RecognitionListener
+
+
+
+
+
+
+
+import android.speech.RecognizerIntent
+
+
+
+
+
+
+
+import android.speech.SpeechRecognizer
+
+
+
+
+
+
+
+import com.arthenica.ffmpegkit.FFmpegKit
+
+
+
+
+
+
+
+import com.arthenica.ffmpegkit.ReturnCode
+
+
+
+
+
+
+
+import kotlinx.coroutines.Dispatchers
+
+
+
+
+
+
+
+import kotlinx.coroutines.delay
+
+
+
+
+
+
+
+import kotlinx.coroutines.withContext
+
+
+
+
+
+
+
+import okhttp3.*
+
+
+
+
+
+
+
+import okhttp3.MediaType.Companion.toMediaTypeOrNull
+
+
+
+
+
+
+
+import okhttp3.RequestBody.Companion.toRequestBody
+
+
+
+
+
+
+
+import okhttp3.RequestBody.Companion.asRequestBody
+
+
+
+
+
+
+
+import org.json.JSONArray
+
+
+
+
+
+
+
+import org.json.JSONObject
+
+
+
+
+
+
+
+import java.io.ByteArrayOutputStream
+
+
+
+
+
+
+
+import java.io.File
+
+
+
+
+
+
+
+import java.io.FileOutputStream
+
+
+
+
+
+
+
+import java.io.InputStream
+
+
+
+
+
+
+
+import java.net.SocketTimeoutException
+
+
+
+
+
+
+
+import java.util.concurrent.TimeUnit
+
+
+
+
+
+
+
+import android.util.Base64
+
+
+
+
+
+
+
+import android.util.Log
+
+
+
+
+
+
+
+import kotlin.coroutines.resume
+
+
+
+
+
+
+
+import kotlin.coroutines.resumeWithException
+
+
+
+
+
+
+
+import kotlinx.coroutines.suspendCancellableCoroutine
+
+
+
+
+
+
+
+import android.webkit.MimeTypeMap
+
+
+
+
+
+
+
+import java.security.MessageDigest
+
+
+
+
+
+
+
+import javax.crypto.Mac
+
+
+
+
+
+
+
+import javax.crypto.spec.SecretKeySpec
+
+
+
+
+
+
+
+import java.net.URLEncoder
+
+
+
+
+
+
+
+import java.text.SimpleDateFormat
+
+
+
+
+
+
+
+import java.util.*
+
+
+
+
+
+
+
+import java.util.Locale
+
+
+
+
+
+
+
+import com.alibaba.sdk.android.oss.OSS
+
+
+
+
+
+
+
+import com.alibaba.sdk.android.oss.OSSClient
+
+
+
+
+
+
+
+import com.alibaba.sdk.android.oss.ClientConfiguration
+
+
+
+
+
+
+
+import com.alibaba.sdk.android.oss.common.auth.OSSCredentialProvider
+
+
+
+
+
+
+
+import com.alibaba.sdk.android.oss.common.auth.OSSPlainTextAKSKCredentialProvider
+
+
+
+
+
+
+
+import com.alibaba.sdk.android.oss.model.PutObjectRequest
+
+
+
+
+
+
+
+import com.alibaba.sdk.android.oss.model.PutObjectResult
+
+
+
+
+
+
+
+import com.alibaba.sdk.android.oss.callback.OSSCompletedCallback
+
+
+
+
+
+
+
+import com.alibaba.sdk.android.oss.callback.OSSProgressCallback
+
+
+
+
+
+
+
+// OSS 异常类使用类型擦除方式处理（因为包名可能因 SDK 版本而异）
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+/**
+
+
+
+
+
+
+
+ * 大模型服务类
+
+
+
+
+
+
+
+ * 支持调用OpenAI API或其他兼容的大模型API
+
+
+
+
+
+
+
+ */
+
+
+
+
+
+
+
+class AiModelService(private val context: Context) {
+
+
+
+
+
+
+
+    
+
+
+
+
+
+
+
+    // 这里需要配置你的 API 密钥和端点
+
+
+
+
+
+
+
+    // 建议在提交到 GitHub 前使用占位符，实际运行时从本地安全配置注入
+
+
+
+
+
+
+
+    private val apiKey: String = "YOUR_ZHIPU_API_KEY"
+
+
+
+
+
+
+
+    private val chatCompletionUrl: String = "https://open.bigmodel.cn/api/paas/v4/chat/completions"
+
+
+
+
+
+
+
+    // 原智谱语音识别接口（暂不再使用，可按需保留）
+
+
+
+
+
+
+
+    private val speechToTextUrl: String = "https://open.bigmodel.cn/api/paas/v4/audio/transcriptions"
+
+
+
+
+
+
+
+    private val visionModel = "glm-4v"
+
+
+
+
+
+
+
+    private val textModel = "glm-4-flash"
+
+
+
+
+
+
+
+    private val sttModel = "glm-asr"
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+    // ===== 阿里云录音文件识别配置 =====
+
+
+
+
+
+
+
+    // 提交到 GitHub 前已替换为占位符；请在本地开发环境中填写真实值
+
+
+
+
+
+
+
+    private val aliyunAccessKeyId: String = "YOUR_ALIYUN_ACCESS_KEY_ID"
+
+
+
+
+
+
+
+    private val aliyunAccessKeySecret: String = "YOUR_ALIYUN_ACCESS_KEY_SECRET"
+
+
+
+
+
+
+
+    private val aliyunAppKey: String = "YOUR_ALIYUN_APP_KEY"
+
+
+
+
+
+
+
+    // 地域选择：cn-shanghai / cn-beijing / cn-shenzhen
+
+
+
+
+
+
+
+    private val aliyunRegion: String = "cn-beijing"  // 华北2 (北京)
+
+
+
+
+
+
+
+    private val aliyunFileTransDomain: String = "filetrans.$aliyunRegion.aliyuncs.com"
+
+
+
+
+
+
+
+    // OSS配置（用于上传音频文件到阿里云OSS）
+
+
+
+
+
+
+
+    // 1. 在阿里云控制台创建 OSS Bucket（存储空间）
+
+
+
+
+
+
+
+    // 2. 设置 Bucket 为公共读权限（或使用签名URL，但公共读更简单）
+
+
+
+
+
+
+
+    // 3. 将 Bucket 名称填入下面的 aliyunOssBucket
+
+
+
+
+
+
+
+    private val aliyunOssEndpoint: String = "oss-$aliyunRegion.aliyuncs.com"
+
+
+
+
+
+
+
+    private val aliyunOssBucket: String = "classcompanion"  // OSS Bucket 名称
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+    private val httpClient by lazy {
+
+
+
+
+
+
+
+        OkHttpClient.Builder()
+
+
+
+
+
+
+
+            .connectTimeout(20, TimeUnit.SECONDS)
+
+
+
+
+
+
+
+            .writeTimeout(60, TimeUnit.SECONDS)
+
+
+
+
+
+
+
+            .readTimeout(60, TimeUnit.SECONDS)
+
+
+
+
+
+
+
+            .retryOnConnectionFailure(true)
+
+
+
+
+
+
+
+            .build()
+
+
+
+
+
+
+
+    }
+
+
+
+
+
+
+
+    
+
+
+
+
+
+
+
+    /**
+
+
+
+
+
+
+
+     * 生成知识提纲
+
+
+
+
+
+
+
+     * @param textContent 文本内容
+
+
+
+
+
+
+
+     * @param imageBase64 图片的base64编码（可选）
+
+
+
+
+
+
+
+     * @param audioTranscript 音频转文字结果（可选）
+
+
+
+
+
+
+
+     * @return 结构化的知识提纲JSON
+
+
+
+
+
+
+
+     */
+
+
+
+
+
+
+
+    suspend fun generateKnowledgeOutline(
+
+
+
+
+
+
+
+        textContent: String,
+
+
+
+
+
+
+
+        imageBase64: String? = null,
+
+
+
+
+
+
+
+        audioTranscript: String? = null
+
+
+
+
+
+
+
+    ): Result<KnowledgeOutline> = withContext(Dispatchers.IO) {
+
+
+
+
+
+
+
+        try {
+
+
+
+
+
+
+
+            // 验证是否有内容
+
+
+
+
+
+
+
+            val hasText = textContent.isNotBlank()
+
+
+
+
+
+
+
+            val hasImage = imageBase64 != null
+
+
+
+
+
+
+
+            val hasAudio = audioTranscript != null && audioTranscript.isNotBlank()
+
+
+
+
+
+
+
+            
+
+
+
+
+
+
+
+            if (!hasText && !hasImage && !hasAudio) {
+
+
+
+
+
+
+
+                return@withContext Result.failure(
+
+
+
+
+
+
+
+                    Exception("请提供文本、图片或音频内容以生成知识提纲")
+
+
+
+
+
+
+
+                )
+
+
+
+
+
+
+
+            }
+
+
+
+
+
+
+
+            
+
+
+
+
+
+
+
+            // 如果有图片：先提取文本（OCR/描述），把结果并入文本内容，再只使用文本模型生成 JSON
+
+
+
+
+
+
+
+            var combinedText = StringBuilder()
+
+
+
+
+
+
+
+            if (hasText) combinedText.append(textContent.trim()).append("\n\n")
+
+
+
+
+
+
+
+            if (hasAudio) combinedText.append("录音转文字：\n").append(audioTranscript?.trim()).append("\n\n")
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+            var usedImageBase64: String? = imageBase64
+
+
+
+
+
+
+
+            if (hasImage && imageBase64 != null) {
+
+
+
+
+
+
+
+                val extracted = extractTextFromImage(imageBase64)
+
+
+
+
+
+
+
+                if (!extracted.isNullOrBlank()) {
+
+
+
+
+
+
+
+                    combinedText.append("图片识别内容：\n").append(extracted.trim()).append("\n\n")
+
+
+
+
+
+
+
+                    // 不再把图片直接发送给最终模型
+
+
+
+
+
+
+
+                    usedImageBase64 = null
+
+
+
+
+
+
+
+                } else {
+
+
+
+
+
+
+
+                    // 如果提取失败，仍保留原图片标识，提示模型尽量识别
+
+
+
+
+
+
+
+                    combinedText.append("已上传图片，请识别图片中的文字和内容。\n\n")
+
+
+
+
+
+
+
+                }
+
+
+
+
+
+
+
+            }
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+            val systemPrompt = """你是一位专业的教学助手，擅长将课堂内容整理成结构清晰、重点突出的知识提纲。
+
+
+
+
+
+
+
+请根据提供的课堂内容（包括文本、图片识别出的文字和录音转文字），生成以下格式的JSON知识提纲：
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+{
+
+
+
+
+
+
+
+  "summary": "用2-3句话概括主要内容",
+
+
+
+
+
+
+
+  "structuredOutline": [
+
+
+
+
+
+
+
+    {
+
+
+
+
+
+
+
+      "title": "主题标题",
+
+
+
+
+
+
+
+      "bulletPoints": ["要点1", "要点2", "要点3"]
+
+
+
+
+
+
+
+    }
+
+
+
+
+
+
+
+  ],
+
+
+
+
+
+
+
+  "keyPoints": ["关键知识点1", "关键知识点2"],
+
+
+
+
+
+
+
+  "mindMapBranches": [
+
+
+
+
+
+
+
+    {
+
+
+
+
+
+
+
+      "title": "中心主题",
+
+
+
+
+
+
+
+      "nodes": ["节点1", "节点2"]
+
+
+
+
+
+
+
+    }
+
+
+
+
+
+
+
+  ],
+
+
+
+
+
+
+
+  "chapterLinks": [
+
+
+
+
+
+
+
+    {
+
+
+
+
+
+
+
+      "courseName": "课程名",
+
+
+
+
+
+
+
+      "chapterLabel": "章节",
+
+
+
+
+
+
+
+      "reason": "关联理由"
+
+
+
+
+
+
+
+    }
+
+
+
+
+
+
+
+  ]
+
+
+
+
+
+
+
+}
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+请务必只返回单个 JSON 对象，不要包含任何多余文字或解释。如果无法按格式返回，请返回一个空的 JSON 对象 {}。
+
+
+
+
+
+
+
+""".trimIndent()
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+            val userContent = buildString {
+
+
+
+
+
+
+
+                append(combinedText.toString().trim())
+
+
+
+
+
+
+
+                if (usedImageBase64 != null) {
+
+
+
+
+
+
+
+                    // 仅在 OCR 失败且仍保留图片时，提示有图片
+
+
+
+
+
+
+
+                    append("\n\n已上传图片，请识别图片中的文字和内容（若无法识别请说明）。")
+
+
+
+
+
+
+
+                }
+
+
+
+
+
+
+
+                append("\n\n请根据以上内容生成结构化的JSON格式知识提纲。")
+
+
+
+
+
+
+
+            }
+
+
+
+
+
+
+
+            
+
+
+
+
+
+
+
+            val messages = JSONArray().apply {
+
+
+
+
+
+
+
+                put(JSONObject().apply {
+
+
+
+
+
+
+
+                    put("role", "system")
+
+
+
+
+
+
+
+                    put("content", systemPrompt)
+
+
+
+
+
+
+
+                })
+
+
+
+
+
+
+
+                put(JSONObject().apply {
+
+
+
+
+
+
+
+                    put("role", "user")
+
+
+
+
+
+
+
+                    put("content", userContent)
+
+
+
+
+
+
+
+                })
+
+
+
+
+
+
+
+            }
+
+
+
+
+
+
+
+            
+
+
+
+
+
+
+
+            // 使用 textModel（文本模型）以更稳定产出 JSON
+
+
+
+
+
+
+
+            val requestBody = JSONObject().apply {
+
+
+
+
+
+
+
+                put("model", textModel)
+
+
+
+
+
+
+
+                put("messages", messages)
+
+
+
+
+
+
+
+                put("temperature", 0.0)
+
+
+
+
+
+
+
+                put("top_p", 0.9)
+
+
+
+
+
+
+
+                put("max_tokens", 2000)
+
+
+
+
+
+
+
+            }
+
+
+
+
+
+
+
+            
+
+
+
+
+
+
+
+            val request = Request.Builder()
+
+
+
+
+
+
+
+                .url(chatCompletionUrl)
+
+
+
+
+
+
+
+                .addHeader("Authorization", "Bearer $apiKey")
+
+
+
+
+
+
+
+                .addHeader("Content-Type", "application/json")
+
+
+
+
+
+
+
+                .post(requestBody.toString().toRequestBody("application/json".toMediaTypeOrNull()))
+
+
+
+
+
+
+
+                .build()
+
+
+
+
+
+
+
+            
+
+
+
+
+
+
+
+            Log.d("AiModelService", "generateKnowledgeOutline model=$textModel (imageOCR=${hasImage && usedImageBase64 == null})")
+
+
+
+
+
+
+
+            Log.d("AiModelService", "requestBody=$requestBody")
+
+
+
+
+
+
+
+            
+
+
+
+
+
+
+
+            val response = executeWithRetry(request)
+
+
+
+
+
+
+
+            val responseBody = response.body?.string().orEmpty()
+
+
+
+
+
+
+
+            
+
+
+
+
+
+
+
+            Log.d("AiModelService", "responseCode=${response.code}, body=$responseBody")
+
+
+
+
+
+
+
+            
+
+
+
+
+
+
+
+            if (!response.isSuccessful) {
+
+
+
+
+
+
+
+                return@withContext Result.failure(
+
+
+
+
+
+
+
+                    Exception("API调用失败: ${response.code} ${response.message}")
+
+
+
+
+
+
+
+                )
+
+
+
+
+
+
+
+            }
+
+
+
+
+
+
+
+            
+
+
+
+
+
+
+
+            // 之后解析逻辑保持不变（复用已有的 tryParseJsonFromText / retryRequestForStrictJson / knowledgeOutlineFromJson 等）
+
+
+
+
+
+
+
+            val jsonResponse = JSONObject(responseBody)
+
+
+
+
+
+
+
+            val choices = jsonResponse.getJSONArray("choices")
+
+
+
+
+
+
+
+            val messageObj = choices.getJSONObject(0).getJSONObject("message")
+
+
+
+
+
+
+
+            val content = messageObj.getString("content")
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+            // 先尝试从模型原文中抽取 JSON
+
+
+
+
+
+
+
+            val parsedJson = tryParseJsonFromText(content)
+
+
+
+
+
+
+
+            var outline: KnowledgeOutline? = null
+
+
+
+
+
+
+
+            if (parsedJson != null) {
+
+
+
+
+
+
+
+                try {
+
+
+
+
+
+
+
+                    outline = knowledgeOutlineFromJson(parsedJson)
+
+
+
+
+
+
+
+                } catch (e: Exception) {
+
+
+
+
+
+
+
+                    Log.w("AiModelService", "parsed JSON -> structure conversion failed: ${e.message}", e)
+
+
+
+
+
+
+
+                }
+
+
+
+
+
+
+
+            }
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+            // 若未成功解析为 JSON，则尝试一次严格 JSON 的重试请求（只在第一次解析失败时）
+
+
+
+
+
+
+
+            if (outline == null) {
+
+
+
+
+
+
+
+                Log.d("AiModelService", "模型未直接返回JSON，尝试严格JSON重试")
+
+
+
+
+
+
+
+                val retryRaw = retryRequestForStrictJson(messages, textModel)
+
+
+
+
+
+
+
+                if (!retryRaw.isNullOrBlank()) {
+
+
+
+
+
+
+
+                    val retryParsed = tryParseJsonFromText(retryRaw)
+
+
+
+
+
+
+
+                    if (retryParsed != null) {
+
+
+
+
+
+
+
+                        try {
+
+
+
+
+
+
+
+                            outline = knowledgeOutlineFromJson(retryParsed)
+
+
+
+
+
+
+
+                        } catch (e: Exception) {
+
+
+
+
+
+
+
+                            Log.w("AiModelService", "retryParsed -> structure conversion failed: ${e.message}", e)
+
+
+
+
+
+
+
+                        }
+
+
+
+
+
+
+
+                    } else {
+
+
+
+
+
+
+
+                        Log.d("AiModelService", "重试也未返回可解析的 JSON，重试原文: $retryRaw")
+
+
+
+
+
+
+
+                    }
+
+
+
+
+
+
+
+                } else {
+
+
+
+
+
+
+
+                    Log.d("AiModelService", "未收到重试响应或重试失败")
+
+
+
+
+
+
+
+                }
+
+
+
+
+
+
+
+            }
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+            // 最终回退：使用现有的文本解析器把原始 content（或重试原文）转成 KnowledgeOutline
+
+
+
+
+
+
+
+            if (outline == null) {
+
+
+
+
+
+
+
+                // 传入 reason 让 parseTextResponse 生成更友好的 summary
+
+
+
+
+
+
+
+                outline = parseTextResponse(content, reason = "AI 没有返回结构化笔记（已尝试重试）")
+
+
+
+
+
+
+
+            }
+
+
+
+
+
+
+
+            
+
+
+
+
+
+
+
+            Result.success(outline)
+
+
+
+
+
+
+
+        } catch (e: SocketTimeoutException) {
+
+
+
+
+
+
+
+            Result.failure(Exception("请求智谱超时，请稍后重试", e))
+
+
+
+
+
+
+
+        } catch (e: Exception) {
+
+
+
+
+
+
+
+            Result.failure(e)
+
+
+
+
+
+
+
+        }
+
+
+
+
+
+
+
+    }
+
+
+
+
+
+
+
+    
+
+
+
+
+
+
+
+    suspend fun generateAssignmentHint(
+
+
+
+
+
+
+
+        question: String,
+
+
+
+
+
+
+
+        contextInfo: String?
+
+
+
+
+
+
+
+    ): Result<AssignmentHintResponse> = withContext(Dispatchers.IO) {
+
+
+
+
+
+
+
+        try {
+
+
+
+
+
+
+
+            val systemPrompt = """
+
+
+
+
+
+
+
+你是一位专业的作业辅导老师，请围绕“启发式解题”提供帮助，避免直接给出作业答案。
+
+
+
+
+
+
+
+返回严格的JSON，格式如下：
+
+
+
+
+
+
+
+{
+
+
+
+
+
+
+
+  "concepts": ["概念1", "..."],
+
+
+
+
+
+
+
+  "formulas": ["公式1", "..."],
+
+
+
+
+
+
+
+  "steps": ["步骤1", "..."],
+
+
+
+
+
+
+
+  "chapters": [
+
+
+
+
+
+
+
+    {"courseName":"课程名","chapterLabel":"章节","reason":"推荐理由"}
+
+
+
+
+
+
+
+  ],
+
+
+
+
+
+
+
+  "discussions": ["建议查阅的小组讨论或扩展资源"]
+
+
+
+
+
+
+
+}
+
+
+
+
+
+
+
+"""
+
+
+
+
+
+
+
+            val userContent = buildString {
+
+
+
+
+
+
+
+                append("问题描述：\n$question\n\n")
+
+
+
+
+
+
+
+                contextInfo?.takeIf { it.isNotBlank() }?.let {
+
+
+
+
+
+
+
+                    append("补充背景：\n$it")
+
+
+
+
+
+
+
+                }
+
+
+
+
+
+
+
+            }
+
+
+
+
+
+
+
+            
+
+
+
+
+
+
+
+            val messages = JSONArray().apply {
+
+
+
+
+
+
+
+                put(JSONObject().apply {
+
+
+
+
+
+
+
+                    put("role", "system")
+
+
+
+
+
+
+
+                    put("content", systemPrompt.trimIndent())
+
+
+
+
+
+
+
+                })
+
+
+
+
+
+
+
+                put(JSONObject().apply {
+
+
+
+
+
+
+
+                    put("role", "user")
+
+
+
+
+
+
+
+                    put("content", userContent)
+
+
+
+
+
+
+
+                })
+
+
+
+
+
+
+
+            }
+
+
+
+
+
+
+
+            
+
+
+
+
+
+
+
+            val requestBody = JSONObject().apply {
+
+
+
+
+
+
+
+                put("model", textModel)
+
+
+
+
+
+
+
+                put("messages", messages)
+
+
+
+
+
+
+
+                put("temperature", 0.6)
+
+
+
+
+
+
+
+                put("max_tokens", 1200)
+
+
+
+
+
+
+
+            }
+
+
+
+
+
+
+
+            
+
+
+
+
+
+
+
+            val request = Request.Builder()
+
+
+
+
+
+
+
+                .url(chatCompletionUrl)
+
+
+
+
+
+
+
+                .addHeader("Authorization", "Bearer $apiKey")
+
+
+
+
+
+
+
+                .addHeader("Content-Type", "application/json")
+
+
+
+
+
+
+
+                .post(requestBody.toString().toRequestBody("application/json".toMediaTypeOrNull()))
+
+
+
+
+
+
+
+                .build()
+
+
+
+
+
+
+
+            
+
+
+
+
+
+
+
+            Log.d("AiModelService", "generateAssignmentHint model=$textModel")
+
+
+
+
+
+
+
+            Log.d("AiModelService", "requestBody=$requestBody")
+
+
+
+
+
+
+
+            
+
+
+
+
+
+
+
+            val response = executeWithRetry(request)
+
+
+
+
+
+
+
+            val responseBody = response.body?.string().orEmpty()
+
+
+
+
+
+
+
+            
+
+
+
+
+
+
+
+            Log.d("AiModelService", "responseCode=${response.code}, body=$responseBody")
+
+
+
+
+
+
+
+            if (!response.isSuccessful) {
+
+
+
+
+
+
+
+                return@withContext Result.failure(
+
+
+
+
+
+
+
+                    Exception("提示生成失败: ${response.code} ${response.message}")
+
+
+
+
+
+
+
+                )
+
+
+
+
+
+
+
+            }
+
+
+
+
+
+
+
+            
+
+
+
+
+
+
+
+            // 安全解析响应
+
+
+
+
+
+
+
+            val message = try {
+
+
+
+
+
+
+
+                val jsonResponse = JSONObject(responseBody)
+
+
+
+
+
+
+
+                val choices = jsonResponse.optJSONArray("choices")
+
+
+
+
+
+
+
+                if (choices == null || choices.length() == 0) {
+
+
+
+
+
+
+
+                    return@withContext Result.failure(Exception("API返回格式错误：缺少choices"))
+
+
+
+
+
+
+
+                }
+
+
+
+
+
+
+
+                val messageObj = choices.getJSONObject(0).optJSONObject("message")
+
+
+
+
+
+
+
+                if (messageObj == null) {
+
+
+
+
+
+
+
+                    return@withContext Result.failure(Exception("API返回格式错误：缺少message"))
+
+
+
+
+
+
+
+                }
+
+
+
+
+
+
+
+                messageObj.optString("content", "")
+
+
+
+
+
+
+
+            } catch (e: Exception) {
+
+
+
+
+
+
+
+                Log.e("AiModelService", "解析API响应失败: ${e.message}", e)
+
+
+
+
+
+
+
+                return@withContext Result.failure(Exception("解析API响应失败: ${e.message}"))
+
+
+
+
+
+
+
+            }
+
+
+
+
+
+
+
+            
+
+
+
+
+
+
+
+            if (message.isBlank()) {
+
+
+
+
+
+
+
+                return@withContext Result.failure(Exception("AI返回内容为空"))
+
+
+
+
+
+
+
+            }
+
+
+
+
+
+
+
+            
+
+
+
+
+
+
+
+            // 尝试从文本中提取JSON（类似generateKnowledgeOutline的处理）
+
+
+
+
+
+
+
+            val parsedJson = tryParseJsonFromText(message)
+
+
+
+
+
+
+
+            val hintResponse = try {
+
+
+
+
+
+
+
+                if (parsedJson != null) {
+
+
+
+
+
+
+
+                    try {
+
+
+
+
+
+
+
+                        parseAssignmentHintResponseFromJson(parsedJson)
+
+
+
+
+
+
+
+                    } catch (e: Exception) {
+
+
+
+
+
+
+
+                        Log.w("AiModelService", "从JSON解析失败，尝试文本解析: ${e.message}", e)
+
+
+
+
+
+
+
+                        parseAssignmentHintResponse(message)
+
+
+
+
+
+
+
+                    }
+
+
+
+
+
+
+
+                } else {
+
+
+
+
+
+
+
+                    parseAssignmentHintResponse(message)
+
+
+
+
+
+
+
+                }
+
+
+
+
+
+
+
+            } catch (e: Exception) {
+
+
+
+
+
+
+
+                Log.e("AiModelService", "解析提示响应失败: ${e.message}", e)
+
+
+
+
+
+
+
+                // 返回一个安全的fallback响应
+
+
+
+
+
+
+
+                AssignmentHintResponse(
+
+
+
+
+
+
+
+                    relatedConcepts = emptyList(),
+
+
+
+
+
+
+
+                    formulas = emptyList(),
+
+
+
+
+
+
+
+                    solutionSteps = listOf("解析失败，请重试。原始内容：${message.take(200)}"),
+
+
+
+
+
+
+
+                    chapterLinks = emptyList(),
+
+
+
+
+
+
+
+                    relatedDiscussions = emptyList()
+
+
+
+
+
+
+
+                )
+
+
+
+
+
+
+
+            }
+
+
+
+
+
+
+
+            
+
+
+
+
+
+
+
+            Result.success(hintResponse)
+
+
+
+
+
+
+
+        } catch (e: SocketTimeoutException) {
+
+
+
+
+
+
+
+            Result.failure(Exception("请求智谱超时，请稍后重试", e))
+
+
+
+
+
+
+
+        } catch (e: Exception) {
+
+
+
+
+
+
+
+            Result.failure(e)
+
+
+
+
+
+
+
+        }
+
+
+
+
+
+
+
+    }
+
+
+
+
+
+
+
+    
+
+
+
+
+
+
+
+    /**
+
+
+
+
+
+
+
+     * 将图片URI转换为base64编码
+
+
+
+
+
+
+
+     */
+
+
+
+
+
+
+
+    suspend fun imageToBase64(uri: Uri): String? = withContext(Dispatchers.IO) {
+
+
+
+
+
+
+
+        try {
+
+
+
+
+
+
+
+            val inputStream: InputStream? = context.contentResolver.openInputStream(uri)
+
+
+
+
+
+
+
+            inputStream?.use { stream ->
+
+
+
+
+
+
+
+                val bitmap = BitmapFactory.decodeStream(stream)
+
+
+
+
+
+
+
+                bitmap?.let { bmp ->
+
+
+
+
+
+
+
+                    val outputStream = ByteArrayOutputStream()
+
+
+
+
+
+
+
+                    bmp.compress(Bitmap.CompressFormat.JPEG, 85, outputStream)
+
+
+
+
+
+
+
+                    val imageBytes = outputStream.toByteArray()
+
+
+
+
+
+
+
+                    Base64.encodeToString(imageBytes, Base64.NO_WRAP)
+
+
+
+
+
+
+
+                }
+
+
+
+
+
+
+
+            }
+
+
+
+
+
+
+
+        } catch (e: Exception) {
+
+
+
+
+
+
+
+            null
+
+
+
+
+
+
+
+        }
+
+
+
+
+
+
+
+    }
+
+
+
+
+
+
+
+    
+
+
+
+
+
+
+
+    /**
+
+
+
+
+
+
+
+     * 语音转文字（使用阿里云录音文件识别）
+
+
+
+
+
+
+
+     *
+
+
+
+
+
+
+
+     * 注意：
+
+
+
+
+
+
+
+     * 1. 需要在顶部配置 aliyunAccessKeyId / aliyunAccessKeySecret / aliyunAppKey
+
+
+
+
+
+
+
+     * 2. 阿里云要求音频文件必须通过URL访问，不支持直接上传本地文件
+
+
+
+
+
+
+
+     * 3. 需要先上传到OSS或提供可公网访问的URL
+
+
+
+
+
+
+
+     */
+
+
+
+
+
+
+
+    suspend fun transcribeAudio(uri: Uri): Result<String> = withContext(Dispatchers.IO) {
+
+
+
+
+
+
+
+        // 检查阿里云配置
+
+
+
+
+
+
+
+        if (aliyunAccessKeyId == "请填入你的阿里云 AccessKeyId" || 
+
+
+
+
+
+
+
+            aliyunAccessKeySecret == "请填入你的阿里云 AccessKeySecret" ||
+
+
+
+
+
+
+
+            aliyunAppKey == "请填入你的项目 AppKey") {
+
+
+
+
+
+
+
+            return@withContext Result.failure(Exception("请先配置阿里云 AccessKeyId、AccessKeySecret 和 AppKey"))
+
+
+
+
+
+
+
+        }
+
+
+
+
+
+
+
+        
+
+
+
+
+
+
+
+        return@withContext transcribeAudioWithAliyun(uri)
+
+
+
+
+
+
+
+    }
+
+
+
+
+
+
+
+    
+
+
+
+
+
+
+
+    /**
+
+
+
+
+
+
+
+     * 使用阿里云录音文件识别（录音文件识别）
+
+
+
+
+
+
+
+     * 支持试用版，需要先上传到 OSS 获取公网访问 URL
+
+
+
+
+
+
+
+     */
+
+
+
+
+
+
+
+    private suspend fun transcribeAudioWithAliyun(uri: Uri): Result<String> = withContext(Dispatchers.IO) {
+
+
+
+
+
+
+
+        var tempFile: File? = null
+
+
+
+
+
+
+
+        var convertedFile: File? = null
+
+
+
+
+
+
+
+        try {
+
+
+
+
+
+
+
+            tempFile = copyUriToTempFile(uri)
+
+
+
+
+
+
+
+                ?: return@withContext Result.failure(Exception("无法读取音频文件"))
+
+
+
+
+
+
+
+            
+
+
+
+
+
+
+
+            // 将音频转换为 WAV 格式（单声道，16k 采样率），阿里云支持此格式
+
+
+
+
+
+
+
+            convertedFile = convertAudioToMonoWavWithFFmpeg(tempFile)
+
+
+
+
+
+
+
+            if (convertedFile == null) {
+
+
+
+
+
+
+
+                Log.w("AiModelService", "音频转换失败，尝试使用原始文件")
+
+
+
+
+
+
+
+                convertedFile = tempFile  // 如果转换失败，使用原始文件
+
+
+
+
+
+
+
+            }
+
+
+
+
+
+
+
+            
+
+
+
+
+
+
+
+            // 使用 OSS 上传
+
+
+
+
+
+
+
+            if (aliyunOssBucket.isBlank()) {
+
+
+
+
+
+
+
+                return@withContext Result.failure(
+
+
+
+
+
+
+
+                    Exception("OSS Bucket 未配置，请先配置 aliyunOssBucket")
+
+
+
+
+
+
+
+                )
+
+
+
+
+
+
+
+            }
+
+
+
+
+
+
+
+            
+
+
+
+
+
+
+
+            Log.d("AiModelService", "尝试使用 OSS 上传音频文件")
+
+
+
+
+
+
+
+            val ossResult = uploadToOss(convertedFile)
+
+
+
+
+
+
+
+            val audioUrl = ossResult.getOrNull()
+
+
+
+
+
+
+
+                ?: return@withContext Result.failure(
+
+
+
+
+
+
+
+                    Exception("OSS 上传失败: ${ossResult.exceptionOrNull()?.message}")
+
+
+
+
+
+
+
+                )
+
+
+
+
+
+
+
+            
+
+
+
+
+
+
+
+            Log.d("AiModelService", "OSS 上传成功: $audioUrl")
+
+
+
+
+
+
+
+            
+
+
+
+
+
+
+
+            // 使用音频文件 URL
+
+
+
+
+
+
+
+            Log.d("AiModelService", "使用音频文件 URL: $audioUrl")
+
+
+
+
+
+
+
+            
+
+
+
+
+
+
+
+            // 使用普通版录音文件识别 API（支持试用版）
+
+
+
+
+
+
+
+            // 提交识别任务
+
+
+
+
+
+
+
+            val taskId = submitAliyunTranscriptionTask(audioUrl).getOrNull()
+
+
+
+
+
+
+
+                ?: return@withContext Result.failure(Exception("提交识别任务失败"))
+
+
+
+
+
+
+
+            
+
+
+
+
+
+
+
+            // 轮询识别结果
+
+
+
+
+
+
+
+            val result = pollAliyunTranscriptionResult(taskId)
+
+
+
+
+
+
+
+            tempFile?.delete()
+
+
+
+
+
+
+
+            if (convertedFile != tempFile) {
+
+
+
+
+
+
+
+                convertedFile?.delete()  // 删除转换后的文件
+
+
+
+
+
+
+
+            }
+
+
+
+
+
+
+
+            result
+
+
+
+
+
+
+
+        } catch (e: Exception) {
+
+
+
+
+
+
+
+            tempFile?.delete()
+
+
+
+
+
+
+
+            if (convertedFile != null && convertedFile != tempFile) {
+
+
+
+
+
+
+
+                convertedFile.delete()  // 删除转换后的文件
+
+
+
+
+
+
+
+            }
+
+
+
+
+
+
+
+            Result.failure(e)
+
+
+
+
+
+
+
+        }
+
+
+
+
+
+
+
+    }
+
+
+
+
+
+
+
+    
+
+
+
+
+
+
+
+    /**
+
+
+
+
+
+
+
+     * 接收音频 Uri，先转写，再把转写结果与可选文本/图片一起交给 generateKnowledgeOutline 生成提纲
+
+
+
+
+
+
+
+     */
+
+
+
+
+
+
+
+    suspend fun processAudioUriAndGenerateOutline(
+
+
+
+
+
+
+
+        audioUri: Uri,
+
+
+
+
+
+
+
+        imageBase64: String? = null,
+
+
+
+
+
+
+
+        textContent: String? = null
+
+
+
+
+
+
+
+    ): Result<KnowledgeOutline> = withContext(Dispatchers.IO) {
+
+
+
+
+
+
+
+        try {
+
+
+
+
+
+
+
+            Log.d("AiModelService", "processAudioUriAndGenerateOutline start, audio=$audioUri, hasImage=${imageBase64 != null}")
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+            // 1) 语音转文字
+
+
+
+
+
+
+
+            val sttResult = transcribeAudio(audioUri)
+
+
+
+
+
+
+
+            if (sttResult.isFailure) {
+
+
+
+
+
+
+
+                Log.w("AiModelService", "transcribeAudio failed: ${sttResult.exceptionOrNull()?.message}")
+
+
+
+
+
+
+
+                return@withContext Result.failure(sttResult.exceptionOrNull() ?: Exception("语音识别失败"))
+
+
+
+
+
+
+
+            }
+
+
+
+
+
+
+
+            val transcript = sttResult.getOrNull().orEmpty()
+
+
+
+
+
+
+
+            Log.d("AiModelService", "transcription success, length=${transcript.length}")
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+            // 2) 调用已有的生成提纲流程（generateKnowledgeOutline 会处理图片 OCR 与 JSON 容错）
+
+
+
+
+
+
+
+            val baseText = textContent ?: ""
+
+
+
+
+
+
+
+            return@withContext generateKnowledgeOutline(baseText, imageBase64, transcript)
+
+
+
+
+
+
+
+        } catch (e: Exception) {
+
+
+
+
+
+
+
+            Log.e("AiModelService", "processAudioUriAndGenerateOutline error: ${e.message}", e)
+
+
+
+
+
+
+
+            Result.failure(e)
+
+
+
+
+
+
+
+        }
+
+
+
+
+
+
+
+    }
+
+
+
+
+
+
+
+    
+
+
+
+
+
+
+
+    /**
+
+
+
+
+
+
+
+     * 解析大模型返回的内容为结构化格式
+
+
+
+
+
+
+
+     */
+
+
+
+
+
+
+
+    private fun parseModelResponse(content: String): KnowledgeOutline {
+
+
+
+
+
+
+
+        // 检查模型是否在请求内容
+
+
+
+
+
+
+
+        if (content.contains("需要") && (content.contains("内容") || content.contains("提供"))) {
+
+
+
+
+
+
+
+            Log.w("AiModelService", "模型返回提示需要内容: $content")
+
+
+
+
+
+
+
+            throw Exception("模型提示需要内容。请确保已输入文本、上传图片或成功转录音频。")
+
+
+
+
+
+
+
+        }
+
+
+
+
+
+
+
+        
+
+
+
+
+
+
+
+        // 尝试解析JSON格式的响应
+
+
+
+
+
+
+
+        return try {
+
+
+
+
+
+
+
+            // 尝试提取JSON部分（可能被markdown代码块包裹）
+
+
+
+
+
+
+
+            val jsonContent = content.trim()
+
+
+
+
+
+
+
+                .removePrefix("```json")
+
+
+
+
+
+
+
+                .removePrefix("```")
+
+
+
+
+
+
+
+                .removeSuffix("```")
+
+
+
+
+
+
+
+                .trim()
+
+
+
+
+
+
+
+            
+
+
+
+
+
+
+
+            val json = JSONObject(jsonContent)
+
+
+
+
+
+
+
+            KnowledgeOutline(
+
+
+
+
+
+
+
+                summary = json.optString("summary", ""),
+
+
+
+
+
+
+
+                structuredOutline = parseOutlineSections(json.optJSONArray("structuredOutline")),
+
+
+
+
+
+
+
+                keyPoints = parseStringArray(json.optJSONArray("keyPoints")),
+
+
+
+
+
+
+
+                mindMapBranches = parseMindMapBranches(json.optJSONArray("mindMapBranches")),
+
+
+
+
+
+
+
+                chapterLinks = parseChapterLinks(json.optJSONArray("chapterLinks"))
+
+
+
+
+
+
+
+            )
+
+
+
+
+
+
+
+        } catch (e: Exception) {
+
+
+
+
+
+
+
+            Log.e("AiModelService", "模型未返回标准JSON: $content", e)
+
+
+
+
+
+
+
+            parseTextResponse(content, reason = "AI 没有返回结构化笔记")
+
+
+
+
+
+
+
+        }
+
+
+
+
+
+
+
+    }
+
+
+
+
+
+
+
+    
+
+
+
+
+
+
+
+    private fun parseTextResponse(text: String, reason: String? = null): KnowledgeOutline {
+
+
+
+
+
+
+
+        // 简单的文本解析逻辑
+
+
+
+
+
+
+
+        val lines = text.split("\n").map { it.trim() }.filter { it.isNotBlank() }
+
+
+
+
+
+
+
+        
+
+
+
+
+
+
+
+        var summary = ""
+
+
+
+
+
+
+
+        val outlineSections = mutableListOf<OutlineSection>()
+
+
+
+
+
+
+
+        val keyPoints = mutableListOf<String>()
+
+
+
+
+
+
+
+        val mindMapBranches = mutableListOf<MindMapBranch>()
+
+
+
+
+
+
+
+        val chapterLinks = mutableListOf<ChapterLink>()
+
+
+
+
+
+
+
+        
+
+
+
+
+
+
+
+        var currentSection: OutlineSection? = null
+
+
+
+
+
+
+
+        var currentSectionPoints = mutableListOf<String>()
+
+
+
+
+
+
+
+        
+
+
+
+
+
+
+
+        lines.forEach { line ->
+
+
+
+
+
+
+
+            when {
+
+
+
+
+
+
+
+                line.contains("总结") || line.contains("概要") -> {
+
+
+
+
+
+
+
+                    summary = line.substringAfter("：").substringAfter(":").trim()
+
+
+
+
+
+
+
+                }
+
+
+
+
+
+
+
+                line.startsWith("#") || line.matches(Regex("^[一二三四五六七八九十]+[、.]")) -> {
+
+
+
+
+
+
+
+                    // 新的章节标题
+
+
+
+
+
+
+
+                    currentSection?.let {
+
+
+
+
+
+
+
+                        outlineSections.add(it.copy(bulletPoints = currentSectionPoints))
+
+
+
+
+
+
+
+                    }
+
+
+
+
+
+
+
+                    currentSection = OutlineSection(
+
+
+
+
+
+
+
+                        title = line.replace(Regex("^[#一二三四五六七八九十]+[、.]"), "").trim(),
+
+
+
+
+
+
+
+                        bulletPoints = emptyList()
+
+
+
+
+
+
+
+                    )
+
+
+
+
+
+
+
+                    currentSectionPoints = mutableListOf()
+
+
+
+
+
+
+
+                }
+
+
+
+
+
+
+
+                line.startsWith("-") || line.startsWith("•") || line.matches(Regex("^\\d+[.)]")) -> {
+
+
+
+
+
+
+
+                    val point = line.replace(Regex("^[-•\\d+.)]"), "").trim()
+
+
+
+
+
+
+
+                    if (currentSection != null) {
+
+
+
+
+
+
+
+                        currentSectionPoints.add(point)
+
+
+
+
+
+
+
+                    } else {
+
+
+
+
+
+
+
+                        keyPoints.add(point)
+
+
+
+
+
+
+
+                    }
+
+
+
+
+
+
+
+                }
+
+
+
+
+
+
+
+                line.contains("关键") || line.contains("重点") -> {
+
+
+
+
+
+
+
+                    // 提取关键点
+
+
+
+
+
+
+
+                }
+
+
+
+
+
+
+
+            }
+
+
+
+
+
+
+
+        }
+
+
+
+
+
+
+
+        
+
+
+
+
+
+
+
+        currentSection?.let {
+
+
+
+
+
+
+
+            outlineSections.add(it.copy(bulletPoints = currentSectionPoints))
+
+
+
+
+
+
+
+        }
+
+
+
+
+
+
+
+        
+
+
+
+
+
+
+
+        val fallbackSummary = summary.ifBlank {
+
+
+
+
+
+
+
+            when {
+
+
+
+
+
+
+
+                reason != null -> "$reason：$text"
+
+
+
+
+
+
+
+                text.isNotBlank() -> text
+
+
+
+
+
+
+
+                else -> "AI 返回：$text"
+
+
+
+
+
+
+
+            }
+
+
+
+
+
+
+
+        }
+
+
+
+
+
+
+
+        
+
+
+
+
+
+
+
+        if (outlineSections.isEmpty() && lines.isNotEmpty()) {
+
+
+
+
+
+
+
+            outlineSections.add(
+
+
+
+
+
+
+
+                OutlineSection(
+
+
+
+
+
+
+
+                    title = "图片识别内容",
+
+
+
+
+
+
+
+                    bulletPoints = lines
+
+
+
+
+
+
+
+                )
+
+
+
+
+
+
+
+            )
+
+
+
+
+
+
+
+        }
+
+
+
+
+
+
+
+        
+
+
+
+
+
+
+
+        if (keyPoints.isEmpty()) {
+
+
+
+
+
+
+
+            if (lines.isNotEmpty()) {
+
+
+
+
+
+
+
+                keyPoints.addAll(lines.take(8))
+
+
+
+
+
+
+
+            } else {
+
+
+
+
+
+
+
+                keyPoints.add(text)
+
+
+
+
+
+
+
+            }
+
+
+
+
+
+
+
+        }
+
+
+
+
+
+
+
+        
+
+
+
+
+
+
+
+        return KnowledgeOutline(
+
+
+
+
+
+
+
+            summary = fallbackSummary,
+
+
+
+
+
+
+
+            structuredOutline = outlineSections,
+
+
+
+
+
+
+
+            keyPoints = keyPoints.take(8),
+
+
+
+
+
+
+
+            mindMapBranches = mindMapBranches,
+
+
+
+
+
+
+
+            chapterLinks = chapterLinks
+
+
+
+
+
+
+
+        )
+
+
+
+
+
+
+
+    }
+
+
+
+
+
+
+
+    
+
+
+
+
+
+
+
+    private fun parseOutlineSections(array: JSONArray?): List<OutlineSection> {
+
+
+
+
+
+
+
+        if (array == null) return emptyList()
+
+
+
+
+
+
+
+        return (0 until array.length()).mapNotNull { i ->
+
+
+
+
+
+
+
+            val obj = array.optJSONObject(i) ?: return@mapNotNull null
+
+
+
+
+
+
+
+            OutlineSection(
+
+
+
+
+
+
+
+                title = obj.optString("title", ""),
+
+
+
+
+
+
+
+                bulletPoints = parseStringArray(obj.optJSONArray("bulletPoints"))
+
+
+
+
+
+
+
+            )
+
+
+
+
+
+
+
+        }
+
+
+
+
+
+
+
+    }
+
+
+
+
+
+
+
+    
+
+
+
+
+
+
+
+    private fun parseStringArray(array: JSONArray?): List<String> {
+
+
+
+
+
+
+
+        if (array == null) return emptyList()
+
+
+
+
+
+
+
+        return try {
+
+
+
+
+
+
+
+            (0 until array.length()).mapNotNull { i ->
+
+
+
+
+
+
+
+                try {
+
+
+
+
+
+
+
+                    val value = array.opt(i)
+
+
+
+
+
+
+
+                    when (value) {
+
+
+
+
+
+
+
+                        is String -> if (value.isNotBlank()) value else null
+
+
+
+
+
+
+
+                        null -> null
+
+
+
+
+
+
+
+                        else -> value.toString().takeIf { it.isNotBlank() }
+
+
+
+
+
+
+
+                    }
+
+
+
+
+
+
+
+                } catch (e: Exception) {
+
+
+
+
+
+
+
+                    Log.w("AiModelService", "解析数组元素失败 index=$i: ${e.message}")
+
+
+
+
+
+
+
+                    null
+
+
+
+
+
+
+
+                }
+
+
+
+
+
+
+
+            }
+
+
+
+
+
+
+
+        } catch (e: Exception) {
+
+
+
+
+
+
+
+            Log.e("AiModelService", "parseStringArray失败: ${e.message}", e)
+
+
+
+
+
+
+
+            emptyList()
+
+
+
+
+
+
+
+        }
+
+
+
+
+
+
+
+    }
+
+
+
+
+
+
+
+    
+
+
+
+
+
+
+
+    private fun parseMindMapBranches(array: JSONArray?): List<MindMapBranch> {
+
+
+
+
+
+
+
+        if (array == null) return emptyList()
+
+
+
+
+
+
+
+        return (0 until array.length()).mapNotNull { i ->
+
+
+
+
+
+
+
+            val obj = array.optJSONObject(i) ?: return@mapNotNull null
+
+
+
+
+
+
+
+            MindMapBranch(
+
+
+
+
+
+
+
+                title = obj.optString("title", ""),
+
+
+
+
+
+
+
+                nodes = parseStringArray(obj.optJSONArray("nodes"))
+
+
+
+
+
+
+
+            )
+
+
+
+
+
+
+
+        }
+
+
+
+
+
+
+
+    }
+
+
+
+
+
+
+
+    
+
+
+
+
+
+
+
+    private fun parseChapterLinks(array: JSONArray?): List<ChapterLink> {
+
+
+
+
+
+
+
+        if (array == null) return emptyList()
+
+
+
+
+
+
+
+        return try {
+
+
+
+
+
+
+
+            (0 until array.length()).mapNotNull { i ->
+
+
+
+
+
+
+
+                try {
+
+
+
+
+
+
+
+                    val obj = array.optJSONObject(i) ?: return@mapNotNull null
+
+
+
+
+
+
+
+                    ChapterLink(
+
+
+
+
+
+
+
+                        courseName = obj.optString("courseName", ""),
+
+
+
+
+
+
+
+                        chapterLabel = obj.optString("chapterLabel", ""),
+
+
+
+
+
+
+
+                        reason = obj.optString("reason", "")
+
+
+
+
+
+
+
+                    )
+
+
+
+
+
+
+
+                } catch (e: Exception) {
+
+
+
+
+
+
+
+                    Log.w("AiModelService", "解析章节链接失败 index=$i: ${e.message}")
+
+
+
+
+
+
+
+                    null
+
+
+
+
+
+
+
+                }
+
+
+
+
+
+
+
+            }
+
+
+
+
+
+
+
+        } catch (e: Exception) {
+
+
+
+
+
+
+
+            Log.e("AiModelService", "parseChapterLinks失败: ${e.message}", e)
+
+
+
+
+
+
+
+            emptyList()
+
+
+
+
+
+
+
+        }
+
+
+
+
+
+
+
+    }
+
+
+
+
+
+
+
+    
+
+
+
+
+
+
+
+    private fun parseAssignmentHintResponseFromJson(json: JSONObject): AssignmentHintResponse {
+
+
+
+
+
+
+
+        return try {
+
+
+
+
+
+
+
+            AssignmentHintResponse(
+
+
+
+
+
+
+
+                relatedConcepts = parseStringArray(json.optJSONArray("concepts")),
+
+
+
+
+
+
+
+                formulas = parseStringArray(json.optJSONArray("formulas")),
+
+
+
+
+
+
+
+                solutionSteps = parseStringArray(json.optJSONArray("steps")),
+
+
+
+
+
+
+
+                chapterLinks = parseChapterLinks(json.optJSONArray("chapters")),
+
+
+
+
+
+
+
+                relatedDiscussions = parseStringArray(json.optJSONArray("discussions"))
+
+
+
+
+
+
+
+            )
+
+
+
+
+
+
+
+        } catch (e: Exception) {
+
+
+
+
+
+
+
+            Log.e("AiModelService", "parseAssignmentHintResponseFromJson失败: ${e.message}", e)
+
+
+
+
+
+
+
+            throw e // 重新抛出，让上层处理
+
+
+
+
+
+
+
+        }
+
+
+
+
+
+
+
+    }
+
+
+
+
+
+
+
+    
+
+
+
+
+
+
+
+    private fun parseAssignmentHintResponse(content: String): AssignmentHintResponse {
+
+
+
+
+
+
+
+        return try {
+
+
+
+
+
+
+
+            val json = JSONObject(content)
+
+
+
+
+
+
+
+            parseAssignmentHintResponseFromJson(json)
+
+
+
+
+
+
+
+        } catch (e: Exception) {
+
+
+
+
+
+
+
+            // 如果直接解析失败，返回fallback
+
+
+
+
+
+
+
+            AssignmentHintResponse(
+
+
+
+
+
+
+
+                relatedConcepts = emptyList(),
+
+
+
+
+
+
+
+                formulas = emptyList(),
+
+
+
+
+
+
+
+                solutionSteps = listOf(content.take(500)), // 限制长度避免过长
+
+
+
+
+
+
+
+                chapterLinks = emptyList(),
+
+
+
+
+
+
+
+                relatedDiscussions = emptyList()
+
+
+
+
+
+
+
+            )
+
+
+
+
+
+
+
+        }
+
+
+
+
+
+
+
+    }
+
+
+
+
+
+
+
+    
+
+
+
+
+
+
+
+    private suspend fun executeWithRetry(request: Request, maxRetry: Int = 1): Response {
+
+
+
+
+
+
+
+        var attempt = 0
+
+
+
+
+
+
+
+        var lastError: Exception? = null
+
+
+
+
+
+
+
+        while (attempt <= maxRetry) {
+
+
+
+
+
+
+
+            try {
+
+
+
+
+
+
+
+                return httpClient.newCall(request).execute()
+
+
+
+
+
+
+
+            } catch (e: Exception) {
+
+
+
+
+
+
+
+                lastError = e
+
+
+
+
+
+
+
+                if (attempt == maxRetry) throw e
+
+
+
+
+
+
+
+                delay(((attempt + 1) * 1000L).coerceAtMost(4000L))
+
+
+
+
+
+
+
+            }
+
+
+
+
+
+
+
+            attempt++
+
+
+
+
+
+
+
+        }
+
+
+
+
+
+
+
+        throw lastError ?: IllegalStateException("未知错误")
+
+
+
+
+
+
+
+    }
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+    private fun copyUriToTempFile(uri: Uri): File? {
+
+
+
+
+
+
+
+        return try {
+
+
+
+
+
+
+
+            val cacheDir = File(context.cacheDir, "ai_audio").apply { if (!exists()) mkdirs() }
+
+
+
+
+
+
+
+            val extension = MimeTypeMap.getSingleton()
+
+
+
+
+
+
+
+                .getExtensionFromMimeType(getMimeType(uri)) ?: "m4a"
+
+
+
+
+
+
+
+            val tempFile = File.createTempFile("audio_", ".$extension", cacheDir)
+
+
+
+
+
+
+
+            context.contentResolver.openInputStream(uri)?.use { input ->
+
+
+
+
+
+
+
+                FileOutputStream(tempFile).use { output ->
+
+
+
+
+
+
+
+                    input.copyTo(output)
+
+
+
+
+
+
+
+                }
+
+
+
+
+
+
+
+            } ?: return null
+
+
+
+
+
+
+
+            tempFile
+
+
+
+
+
+
+
+        } catch (e: Exception) {
+
+
+
+
+
+
+
+            Log.e("AiModelService", "copyUriToTempFile error ${e.message}", e)
+
+
+
+
+
+
+
+            null
+
+
+
+
+
+
+
+        }
+
+
+
+
+
+
+
+    }
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+    private fun getMimeType(uri: Uri): String? {
+
+
+
+
+
+
+
+        return context.contentResolver.getType(uri)
+
+
+
+
+
+
+
+            ?: uri.path?.let { path ->
+
+
+
+
+
+
+
+                val extension = path.substringAfterLast('.', "")
+
+
+
+
+
+
+
+                if (extension.isNotBlank()) {
+
+
+
+
+
+
+
+                    MimeTypeMap.getSingleton().getMimeTypeFromExtension(extension.lowercase())
+
+
+
+
+
+
+
+                } else null
+
+
+
+
+
+
+
+            }
+
+
+
+
+
+
+
+    }
+
+
+
+
+
+
+
+    
+
+
+
+
+
+
+
+    /**
+
+
+
+
+
+
+
+     * 使用 FFmpegKit 将输入音频文件转码为 MP3（阿里云支持的通用格式），返回生成的文件或 null（失败）
+
+
+
+
+
+
+
+     */
+
+
+
+
+
+
+
+    private fun convertAudioToMonoWavWithFFmpeg(input: File): File? {
+
+
+
+
+
+
+
+        return try {
+
+
+
+
+
+
+
+            val inPath = input.absolutePath
+
+
+
+
+
+
+
+            
+
+
+
+
+
+
+
+            // 优先尝试 WAV 格式（阿里云推荐，更稳定）
+
+
+
+
+
+
+
+            val wavOut = File(input.parentFile, "${input.nameWithoutExtension}.wav")
+
+
+
+
+
+
+
+            if (wavOut.exists()) wavOut.delete()
+
+
+
+
+
+
+
+            val wavPath = wavOut.absolutePath
+
+
+
+
+
+
+
+            // WAV: 单声道，16k 采样率，PCM 16位编码（阿里云推荐格式）
+
+
+
+
+
+
+
+            // 使用最严格且最简单的参数确保格式完全符合要求
+
+
+
+
+
+
+
+            // -acodec pcm_s16le: PCM 16位小端编码（这是关键参数）
+
+
+
+
+
+
+
+            // -ar 16000: 16kHz 采样率
+
+
+
+
+
+
+
+            // -ac 1: 单声道
+
+
+
+
+
+
+
+            // -vn: 禁用视频
+
+
+
+
+
+
+
+            // -f wav: WAV 格式
+
+
+
+
+
+
+
+            // 注意：不使用 -sample_fmt，因为 -acodec pcm_s16le 已经指定了格式
+
+
+
+
+
+
+
+            val wavCmd = "-y -i \"$inPath\" -acodec pcm_s16le -ar 16000 -ac 1 -vn -f wav \"$wavPath\""
+
+
+
+
+
+
+
+            val wavSession = FFmpegKit.execute(wavCmd)
+
+
+
+
+
+
+
+            val wavReturnCode = wavSession.returnCode
+
+
+
+
+
+
+
+            if (ReturnCode.isSuccess(wavReturnCode)) {
+
+
+
+
+
+
+
+                val fileSize = wavOut.length()
+
+
+
+
+
+
+
+                val allLogs = wavSession.allLogsAsString
+
+
+
+
+
+
+
+                Log.d("AiModelService", "FFmpeg converted to WAV (PCM 16bit, 16kHz, mono): $fileSize bytes")
+
+
+
+
+
+
+
+                Log.d("AiModelService", "FFmpeg WAV conversion logs: ${allLogs.take(300)}")
+
+
+
+
+
+
+
+                // 验证文件大小合理（至少大于0）
+
+
+
+
+
+
+
+                if (fileSize > 0) {
+
+
+
+
+
+
+
+                    // 验证文件确实存在且可读
+
+
+
+
+
+
+
+                    if (wavOut.exists() && wavOut.canRead()) {
+
+
+
+
+
+
+
+                        return wavOut
+
+
+
+
+
+
+
+                    } else {
+
+
+
+
+
+
+
+                        Log.w("AiModelService", "Converted WAV file exists but cannot be read")
+
+
+
+
+
+
+
+                    }
+
+
+
+
+
+
+
+                } else {
+
+
+
+
+
+
+
+                    Log.w("AiModelService", "Converted WAV file is empty")
+
+
+
+
+
+
+
+                }
+
+
+
+
+
+
+
+            } else {
+
+
+
+
+
+
+
+                val logs = wavSession.allLogsAsString.take(500)
+
+
+
+
+
+
+
+                Log.w("AiModelService", "FFmpeg WAV conversion failed rc=$wavReturnCode, logs=$logs")
+
+
+
+
+
+
+
+            }
+
+
+
+
+
+
+
+            
+
+
+
+
+
+
+
+            // 如果 WAV 失败，尝试 MP3 作为备选
+
+
+
+
+
+
+
+            val mp3Out = File(input.parentFile, "${input.nameWithoutExtension}.mp3")
+
+
+
+
+
+
+
+            if (mp3Out.exists()) mp3Out.delete()
+
+
+
+
+
+
+
+            val mp3Path = mp3Out.absolutePath
+
+
+
+
+
+
+
+            // MP3: 单声道，16k 采样率，64k 比特率（阿里云支持格式）
+
+
+
+
+
+
+
+            val mp3Cmd = "-y -i \"$inPath\" -ac 1 -ar 16000 -b:a 64k -vn -f mp3 -acodec libmp3lame \"$mp3Path\""
+
+
+
+
+
+
+
+            val mp3Session = FFmpegKit.execute(mp3Cmd)
+
+
+
+
+
+
+
+            val mp3ReturnCode = mp3Session.returnCode
+
+
+
+
+
+
+
+            if (ReturnCode.isSuccess(mp3ReturnCode)) {
+
+
+
+
+
+
+
+                val fileSize = mp3Out.length()
+
+
+
+
+
+
+
+                Log.d("AiModelService", "FFmpeg converted to MP3 (fallback, 16kHz, mono, 64kbps): $fileSize bytes")
+
+
+
+
+
+
+
+                if (fileSize > 0) {
+
+
+
+
+
+
+
+                    return mp3Out
+
+
+
+
+
+
+
+                } else {
+
+
+
+
+
+
+
+                    Log.w("AiModelService", "Converted MP3 file is empty")
+
+
+
+
+
+
+
+                }
+
+
+
+
+
+
+
+            } else {
+
+
+
+
+
+
+
+                val logs = mp3Session.allLogsAsString.take(500)
+
+
+
+
+
+
+
+                Log.w("AiModelService", "FFmpeg MP3 conversion also failed rc=$mp3ReturnCode, logs=$logs")
+
+
+
+
+
+
+
+            }
+
+
+
+
+
+
+
+            
+
+
+
+
+
+
+
+            // 所有转换都失败，返回 null
+
+
+
+
+
+
+
+            null
+
+
+
+
+
+
+
+        } catch (e: Exception) {
+
+
+
+
+
+
+
+            Log.w("AiModelService", "convertAudioToMonoWavWithFFmpeg error: ${e.message}", e)
+
+
+
+
+
+
+
+            null
+
+
+
+
+
+
+
+        }
+
+
+
+
+
+
+
+    }
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+    // 新增：尝试从文本中安全解析 JSON（先直接解析，再用正则抽取第一个 {...} 子串）
+
+
+
+
+
+
+
+    private fun tryParseJsonFromText(text: String): JSONObject? {
+
+
+
+
+
+
+
+        // 直接尝试解析
+
+
+
+
+
+
+
+        try {
+
+
+
+
+
+
+
+            return JSONObject(text.trim())
+
+
+
+
+
+
+
+        } catch (e: Exception) {
+
+
+
+
+
+
+
+            // ignore
+
+
+
+
+
+
+
+        }
+
+
+
+
+
+
+
+        // 简单抽取第一个大括号块再解析
+
+
+
+
+
+
+
+        val regex = Regex("\\{(?:[^{}]|\\{[^{}]*\\})*\\}")
+
+
+
+
+
+
+
+        val match = regex.find(text)
+
+
+
+
+
+
+
+        if (match != null) {
+
+
+
+
+
+
+
+            try {
+
+
+
+
+
+
+
+                return JSONObject(match.value)
+
+
+
+
+
+
+
+            } catch (e: Exception) {
+
+
+
+
+
+
+
+                // ignore
+
+
+
+
+
+
+
+            }
+
+
+
+
+
+
+
+        }
+
+
+
+
+
+
+
+        return null
+
+
+
+
+
+
+
+    }
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+    // 新增：把 JSONObject 转换为 KnowledgeOutline（复用已有解析函数）
+
+
+
+
+
+
+
+    private fun knowledgeOutlineFromJson(json: JSONObject): KnowledgeOutline {
+
+
+
+
+
+
+
+        return KnowledgeOutline(
+
+
+
+
+
+
+
+            summary = json.optString("summary", ""),
+
+
+
+
+
+
+
+            structuredOutline = parseOutlineSections(json.optJSONArray("structuredOutline")),
+
+
+
+
+
+
+
+            keyPoints = parseStringArray(json.optJSONArray("keyPoints")),
+
+
+
+
+
+
+
+            mindMapBranches = parseMindMapBranches(json.optJSONArray("mindMapBranches")),
+
+
+
+
+
+
+
+            chapterLinks = parseChapterLinks(json.optJSONArray("chapterLinks"))
+
+
+
+
+
+
+
+        )
+
+
+
+
+
+
+
+    }
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+    // 新增：在解析失败时发起一次“严格返回 JSON”的重试请求（suspend）
+
+
+
+
+
+
+
+    private suspend fun retryRequestForStrictJson(originalMessages: JSONArray, modelName: String): String? {
+
+
+
+
+
+
+
+        return try {
+
+
+
+
+
+
+
+            // 复制 messages（避免修改原始）
+
+
+
+
+
+
+
+            val retryMessages = JSONArray(originalMessages.toString())
+
+
+
+
+
+
+
+            // 添加一个明确要求仅返回 JSON 的用户提示
+
+
+
+
+
+
+
+            val strictPrompt = """
+
+
+
+
+
+
+
+                你的上一条回答不是有效的 JSON。请严格按照以下 JSON 格式 ONLY 输出，不能包含任何注释或额外说明：
+
+
+
+
+
+
+
+                {
+
+
+
+
+
+
+
+                  "summary": "用2-3句话概括主要内容",
+
+
+
+
+
+
+
+                  "structuredOutline": [{"title":"主题标题","bulletPoints":["要点1","要点2"]}],
+
+
+
+
+
+
+
+                  "keyPoints": ["关键知识点1","关键知识点2"],
+
+
+
+
+
+
+
+                  "mindMapBranches": [{"title":"中心主题","nodes":["节点1","节点2"]}],
+
+
+
+
+
+
+
+                  "chapterLinks": [{"courseName":"课程名","chapterLabel":"章节","reason":"关联理由"}]
+
+
+
+
+
+
+
+                }
+
+
+
+
+
+
+
+            """.trimIndent()
+
+
+
+
+
+
+
+            retryMessages.put(JSONObject().apply {
+
+
+
+
+
+
+
+                put("role", "user")
+
+
+
+
+
+
+
+                put("content", strictPrompt)
+
+
+
+
+
+
+
+            })
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+            val retryBody = JSONObject().apply {
+
+
+
+
+
+
+
+                put("model", modelName)
+
+
+
+
+
+
+
+                put("messages", retryMessages)
+
+
+
+
+
+
+
+                put("temperature", 0.0)
+
+
+
+
+
+
+
+                put("max_tokens", 2000)
+
+
+
+
+
+
+
+            }
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+            val retryRequest = Request.Builder()
+
+
+
+
+
+
+
+                .url(chatCompletionUrl)
+
+
+
+
+
+
+
+                .addHeader("Authorization", "Bearer $apiKey")
+
+
+
+
+
+
+
+                .addHeader("Content-Type", "application/json")
+
+
+
+
+
+
+
+                .post(retryBody.toString().toRequestBody("application/json".toMediaTypeOrNull()))
+
+
+
+
+
+
+
+                .build()
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+            val resp = executeWithRetry(retryRequest, maxRetry = 1)
+
+
+
+
+
+
+
+            val body = resp.body?.string().orEmpty()
+
+
+
+
+
+
+
+            Log.d("AiModelService", "retryResponseCode=${resp.code}, body=$body")
+
+
+
+
+
+
+
+            if (resp.isSuccessful) body else null
+
+
+
+
+
+
+
+        } catch (e: Exception) {
+
+
+
+
+
+
+
+            Log.w("AiModelService", "retryRequestForStrictJson error: ${e.message}", e)
+
+
+
+
+
+
+
+            null
+
+
+
+
+
+
+
+        }
+
+
+
+
+
+
+
+    }
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+    // 新增：先用视觉模型从图片中提取纯文本（OCR/要点），返回纯文本描述
+
+
+
+
+
+
+
+    suspend fun extractTextFromImage(imageBase64: String): String? = withContext(Dispatchers.IO) {
+
+
+
+
+
+
+
+        try {
+
+
+
+
+
+
+
+            val systemPrompt = "请只提取图片中的文字或关键信息，返回纯文本，不要任何额外说明或格式化（不要返回 JSON）。"
+
+
+
+
+
+
+
+            val messages = JSONArray().apply {
+
+
+
+
+
+
+
+                put(JSONObject().apply {
+
+
+
+
+
+
+
+                    put("role", "system")
+
+
+
+
+
+
+
+                    put("content", systemPrompt)
+
+
+
+
+
+
+
+                })
+
+
+
+
+
+
+
+                put(JSONObject().apply {
+
+
+
+
+
+
+
+                    put("role", "user")
+
+
+
+
+
+
+
+                    put("content", JSONArray().apply {
+
+
+
+
+
+
+
+                        put(JSONObject().apply {
+
+
+
+
+
+
+
+                            put("type", "text")
+
+
+
+
+
+
+
+                            put("text", "请识别并提取图片中的文字（返回纯文本）")
+
+
+
+
+
+
+
+                        })
+
+
+
+
+
+
+
+                        put(JSONObject().apply {
+
+
+
+
+
+
+
+                            put("type", "image_url")
+
+
+
+
+
+
+
+                            put("image_url", JSONObject().apply {
+
+
+
+
+
+
+
+                                put("url", "data:image/jpeg;base64,$imageBase64")
+
+
+
+
+
+
+
+                            })
+
+
+
+
+
+
+
+                        })
+
+
+
+
+
+
+
+                    })
+
+
+
+
+
+
+
+                })
+
+
+
+
+
+
+
+            }
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+            val body = JSONObject().apply {
+
+
+
+
+
+
+
+                put("model", visionModel)
+
+
+
+
+
+
+
+                put("messages", messages)
+
+
+
+
+
+
+
+                put("temperature", 0.0)
+
+
+
+
+
+
+
+                put("max_tokens", 1500)
+
+
+
+
+
+
+
+            }
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+            val req = Request.Builder()
+
+
+
+
+
+
+
+                .url(chatCompletionUrl)
+
+
+
+
+
+
+
+                .addHeader("Authorization", "Bearer $apiKey")
+
+
+
+
+
+
+
+                .addHeader("Content-Type", "application/json")
+
+
+
+
+
+
+
+                .post(body.toString().toRequestBody("application/json".toMediaTypeOrNull()))
+
+
+
+
+
+
+
+                .build()
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+            val resp = executeWithRetry(req)
+
+
+
+
+
+
+
+            val respBody = resp.body?.string().orEmpty()
+
+
+
+
+
+
+
+            Log.d("AiModelService", "extractTextFromImage responseCode=${resp.code}, body=$respBody")
+
+
+
+
+
+
+
+            if (!resp.isSuccessful) return@withContext null
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+            val json = JSONObject(respBody)
+
+
+
+
+
+
+
+            val choices = json.optJSONArray("choices") ?: return@withContext null
+
+
+
+
+
+
+
+            val messageObj = choices.getJSONObject(0).optJSONObject("message") ?: return@withContext null
+
+
+
+
+
+
+
+            // 视觉模型通常返回文字描述，直接取 content
+
+
+
+
+
+
+
+            val content = messageObj.optString("content", "").trim()
+
+
+
+
+
+
+
+            // 若返回空，可尝试从其他字段或 choices 中组合（此处以 content 为主）
+
+
+
+
+
+
+
+            content.ifBlank { null }
+
+
+
+
+
+
+
+        } catch (e: Exception) {
+
+
+
+
+
+
+
+            Log.w("AiModelService", "extractTextFromImage error: ${e.message}", e)
+
+
+
+
+
+
+
+            null
+
+
+
+
+
+
+
+        }
+
+
+
+
+
+
+
+    }
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+    suspend fun transcribeWithSystemRecognizer(): Result<String> = withContext(Dispatchers.Main) {
+
+
+
+
+
+
+
+        try {
+
+
+
+
+
+
+
+            if (!SpeechRecognizer.isRecognitionAvailable(context)) {
+
+
+
+
+
+
+
+                return@withContext Result.failure(Exception("设备不支持语音识别"))
+
+
+
+
+
+
+
+            }
+
+
+
+
+
+
+
+            val sr = SpeechRecognizer.createSpeechRecognizer(context)
+
+
+
+
+
+
+
+            val intent = Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH).apply {
+
+
+
+
+
+
+
+                putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_FREE_FORM)
+
+
+
+
+
+
+
+                putExtra(RecognizerIntent.EXTRA_PARTIAL_RESULTS, false)
+
+
+
+
+
+
+
+                putExtra(RecognizerIntent.EXTRA_MAX_RESULTS, 5)
+
+
+
+
+
+
+
+            }
+
+
+
+
+
+
+
+            val text = suspendCancellableCoroutine<String> { cont ->
+
+
+
+
+
+
+
+                val listener = object : RecognitionListener {
+
+
+
+
+
+
+
+                    override fun onReadyForSpeech(params: Bundle?) {}
+
+
+
+
+
+
+
+                    override fun onBeginningOfSpeech() {}
+
+
+
+
+
+
+
+                    override fun onRmsChanged(rmsdB: Float) {}
+
+
+
+
+
+
+
+                    override fun onBufferReceived(buffer: ByteArray?) {}
+
+
+
+
+
+
+
+                    override fun onEndOfSpeech() {}
+
+
+
+
+
+
+
+                    override fun onEvent(eventType: Int, params: Bundle?) {}
+
+
+
+
+
+
+
+                    override fun onError(error: Int) {
+
+
+
+
+
+
+
+                        cont.resumeWithException(Exception("识别出错 code=$error"))
+
+
+
+
+
+
+
+                        sr.destroy()
+
+
+
+
+
+
+
+                    }
+
+
+
+
+
+
+
+                    override fun onResults(results: Bundle) {
+
+
+
+
+
+
+
+                        val list = results.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION)
+
+
+
+
+
+
+
+                        val txt = list?.joinToString(separator = " ") ?: ""
+
+
+
+
+
+
+
+                        cont.resume(txt)
+
+
+
+
+
+
+
+                        sr.destroy()
+
+
+
+
+
+
+
+                    }
+
+
+
+
+
+
+
+                    override fun onPartialResults(partialResults: Bundle) {}
+
+
+
+
+
+
+
+                }
+
+
+
+
+
+
+
+                sr.setRecognitionListener(listener)
+
+
+
+
+
+
+
+                sr.startListening(intent)
+
+
+
+
+
+
+
+                cont.invokeOnCancellation { sr.stopListening(); sr.destroy() }
+
+
+
+
+
+
+
+            }
+
+
+
+
+
+
+
+            Result.success(text)
+
+
+
+
+
+
+
+        } catch (e: Exception) {
+
+
+
+
+
+
+
+            Result.failure(e)
+
+
+
+
+
+
+
+        }
+
+
+
+
+
+
+
+    }
+
+
+
+
+
+
+
+    
+
+
+
+
+
+
+
+    // OSS 客户端（懒加载，单例）
+
+
+
+
+
+
+
+    private val ossClient: OSS by lazy {
+
+
+
+
+
+
+
+        // 检查 OSS 配置
+
+
+
+
+
+
+
+        if (aliyunOssBucket.isBlank()) {
+
+
+
+
+
+
+
+            throw IllegalStateException("OSS Bucket 未配置，请先配置 aliyunOssBucket")
+
+
+
+
+
+
+
+        }
+
+
+
+
+
+
+
+        
+
+
+
+
+
+
+
+        // 创建凭证提供者
+
+
+
+
+
+
+
+        val credentialProvider: OSSCredentialProvider = 
+
+
+
+
+
+
+
+            OSSPlainTextAKSKCredentialProvider(aliyunAccessKeyId, aliyunAccessKeySecret)
+
+
+
+
+
+
+
+        
+
+
+
+
+
+
+
+        // 创建客户端配置
+
+
+
+
+
+
+
+        val conf = ClientConfiguration()
+
+
+
+
+
+
+
+        conf.connectionTimeout = 15 * 1000 // 连接超时，默认15秒
+
+
+
+
+
+
+
+        conf.socketTimeout = 15 * 1000 // socket超时，默认15秒
+
+
+
+
+
+
+
+        conf.maxConcurrentRequest = 5 // 最大并发请求数，默认5个
+
+
+
+
+
+
+
+        conf.maxErrorRetry = 2 // 失败后最大重试次数，默认2次
+
+
+
+
+
+
+
+        
+
+
+
+
+
+
+
+        // 创建 OSS 客户端
+
+
+
+
+
+
+
+        val endpoint = "https://$aliyunOssEndpoint"
+
+
+
+
+
+
+
+        OSSClient(context, endpoint, credentialProvider, conf)
+
+
+
+
+
+
+
+    }
+
+
+
+
+
+
+
+    
+
+
+
+
+
+
+
+    /**
+
+
+
+
+
+
+
+     * 上传文件到阿里云 OSS
+
+
+
+
+
+
+
+     * 返回文件的公网访问 URL
+
+
+
+
+
+
+
+     */
+
+
+
+
+
+
+
+    private suspend fun uploadToOss(file: File): Result<String> = withContext(Dispatchers.IO) {
+
+
+
+
+
+
+
+        try {
+
+
+
+
+
+
+
+            // 检查 OSS 配置
+
+
+
+
+
+
+
+            if (aliyunOssBucket.isBlank()) {
+
+
+
+
+
+
+
+                return@withContext Result.failure(Exception("OSS Bucket 未配置，请先配置 aliyunOssBucket"))
+
+
+
+
+
+
+
+            }
+
+
+
+
+
+
+
+            
+
+
+
+
+
+
+
+            // 生成唯一的对象键（文件名）
+
+
+
+
+
+
+
+            val objectKey = "audio/${System.currentTimeMillis()}_${file.name}"
+
+
+
+
+
+
+
+            
+
+
+
+
+
+
+
+            // 创建上传请求
+
+
+
+
+
+
+
+            val putObjectRequest = PutObjectRequest(aliyunOssBucket, objectKey, file.absolutePath)
+
+
+
+
+
+
+
+            
+
+
+
+
+
+
+
+            // 使用协程挂起等待异步上传完成
+
+
+
+
+
+
+
+            val result = suspendCancellableCoroutine<Result<String>> { continuation ->
+
+
+
+
+
+
+
+                // 使用 Java 动态代理创建回调对象（避免类型不匹配问题）
+
+
+
+
+
+
+
+                val callback = java.lang.reflect.Proxy.newProxyInstance(
+
+
+
+
+
+
+
+                    OSSCompletedCallback::class.java.classLoader,
+
+
+
+
+
+
+
+                    arrayOf(OSSCompletedCallback::class.java)
+
+
+
+
+
+
+
+                ) { proxy, method, args ->
+
+
+
+
+
+
+
+                    when (method.name) {
+
+
+
+
+
+
+
+                        "onSuccess" -> {
+
+
+
+
+
+
+
+                            val url = "https://$aliyunOssBucket.$aliyunOssEndpoint/$objectKey"
+
+
+
+
+
+
+
+                            Log.d("AiModelService", "uploadToOss success: $url")
+
+
+
+
+
+
+
+                            continuation.resume(Result.success(url))
+
+
+
+
+
+
+
+                            null
+
+
+
+
+
+
+
+                        }
+
+
+
+
+
+
+
+                        "onFailure" -> {
+
+
+
+
+
+
+
+                            val clientExcepion = args?.get(1)
+
+
+
+
+
+
+
+                            val serviceException = args?.get(2)
+
+
+
+
+
+
+
+                            val errorMsg = when {
+
+
+
+
+
+
+
+                                clientExcepion != null -> {
+
+
+
+
+
+
+
+                                    val msg = try {
+
+
+
+
+
+
+
+                                        (clientExcepion as? Exception)?.message 
+
+
+
+
+
+
+
+                                            ?: clientExcepion.javaClass.getMethod("getMessage").invoke(clientExcepion) as? String
+
+
+
+
+
+
+
+                                            ?: clientExcepion.toString()
+
+
+
+
+
+
+
+                                    } catch (e: Exception) {
+
+
+
+
+
+
+
+                                        clientExcepion.toString()
+
+
+
+
+
+
+
+                                    }
+
+
+
+
+
+
+
+                                    "客户端异常: $msg"
+
+
+
+
+
+
+
+                                }
+
+
+
+
+
+
+
+                                serviceException != null -> {
+
+
+
+
+
+
+
+                                    val errorCode = try {
+
+
+
+
+
+
+
+                                        serviceException.javaClass.getMethod("getErrorCode").invoke(serviceException) as? String
+
+
+
+
+
+
+
+                                    } catch (e: Exception) {
+
+
+
+
+
+
+
+                                        null
+
+
+
+
+
+
+
+                                    }
+
+
+
+
+
+
+
+                                    val msg = try {
+
+
+
+
+
+
+
+                                        (serviceException as? Exception)?.message
+
+
+
+
+
+
+
+                                            ?: serviceException.javaClass.getMethod("getMessage").invoke(serviceException) as? String
+
+
+
+
+
+
+
+                                            ?: serviceException.toString()
+
+
+
+
+
+
+
+                                    } catch (e: Exception) {
+
+
+
+
+
+
+
+                                        serviceException.toString()
+
+
+
+
+
+
+
+                                    }
+
+
+
+
+
+
+
+                                    if (errorCode != null) {
+
+
+
+
+
+
+
+                                        "服务异常: $errorCode - $msg"
+
+
+
+
+
+
+
+                                    } else {
+
+
+
+
+
+
+
+                                        "服务异常: $msg"
+
+
+
+
+
+
+
+                                    }
+
+
+
+
+
+
+
+                                }
+
+
+
+
+
+
+
+                                else -> "上传失败"
+
+
+
+
+
+
+
+                            }
+
+
+
+
+
+
+
+                            Log.e("AiModelService", "uploadToOss error: $errorMsg")
+
+
+
+
+
+
+
+                            continuation.resume(Result.failure(Exception(errorMsg)))
+
+
+
+
+
+
+
+                            null
+
+
+
+
+
+
+
+                        }
+
+
+
+
+
+
+
+                        else -> null
+
+
+
+
+
+
+
+                    }
+
+
+
+
+
+
+
+                } as OSSCompletedCallback<PutObjectRequest, PutObjectResult>
+
+
+
+
+
+
+
+                
+
+
+
+
+
+
+
+                ossClient.asyncPutObject(putObjectRequest, callback)
+
+
+
+
+
+
+
+            }
+
+
+
+
+
+
+
+            
+
+
+
+
+
+
+
+            result
+
+
+
+
+
+
+
+        } catch (e: Exception) {
+
+
+
+
+
+
+
+            Log.e("AiModelService", "uploadToOss error: ${e.message}", e)
+
+
+
+
+
+
+
+            Result.failure(e)
+
+
+
+
+
+
+
+        }
+
+
+
+
+
+
+
+    }
+
+
+
+
+
+
+
+    
+
+
+
+
+
+
+
+    /**
+
+
+
+
+
+
+
+     * 提交阿里云录音文件识别任务
+
+
+
+
+
+
+
+     * 使用RPC风格的POP API调用
+
+
+
+
+
+
+
+     */
+
+
+
+
+
+
+
+    private suspend fun submitAliyunTranscriptionTask(audioUrl: String): Result<String> = withContext(Dispatchers.IO) {
+
+
+
+
+
+
+
+        try {
+
+
+
+
+
+
+
+            // 根据阿里云文档，录音文件识别使用RPC风格，参数以JSON格式传入请求体
+
+
+
+
+
+
+
+            // Task 参数是必需的，包含 appkey、file_link 和 version（新接入请使用4.0版本）
+
+
+
+
+
+
+
+            // 重要：为了确保签名正确，需要手动构建 JSON 字符串，按照服务器期望的顺序
+
+
+
+
+
+
+
+            // 服务器期望的顺序：appkey, file_link, version
+
+
+
+
+
+
+
+            // 先只使用必需参数，确保基本功能正常
+
+
+
+
+
+
+
+            val taskObjectJson = buildString {
+
+
+
+
+
+
+
+                append("{\"appkey\":\"").append(aliyunAppKey)
+
+
+
+
+
+
+
+                append("\",\"file_link\":\"").append(audioUrl)
+
+
+
+
+
+
+
+                append("\",\"version\":\"4.0\"}")
+
+
+
+
+
+
+
+            }
+
+
+
+
+
+
+
+            
+
+
+
+
+
+
+
+            // 生成时间戳（ISO 8601 格式）
+
+
+
+
+
+
+
+            val timestamp = getISOTimestamp()
+
+
+
+
+
+
+
+            
+
+
+
+
+
+
+
+            // 生成随机字符串作为 SignatureNonce（用于防止重放攻击）
+
+
+
+
+
+
+
+            val signatureNonce = java.util.UUID.randomUUID().toString().replace("-", "")
+
+
+
+
+
+
+
+            
+
+
+
+
+
+
+
+            // Version、Action、Timestamp、SignatureNonce、AccessKeyId、SignatureMethod 和 SignatureVersion 作为查询参数
+
+
+
+
+
+
+
+            // 注意：签名时使用原始字符串，URL 中需要编码
+
+
+
+
+
+
+
+            val signatureMethod = "HMAC-SHA1"
+
+
+
+
+
+
+
+            val signatureVersion = "1.0"
+
+
+
+
+
+
+
+            val queryParams = "AccessKeyId=$aliyunAccessKeyId&Action=SubmitTask&SignatureMethod=$signatureMethod&SignatureNonce=$signatureNonce&SignatureVersion=$signatureVersion&Timestamp=$timestamp&Version=2018-08-17"
+
+
+
+
+
+
+
+            val encodedTimestamp = java.net.URLEncoder.encode(timestamp, "UTF-8")
+
+
+
+
+
+
+
+            val encodedSignatureNonce = java.net.URLEncoder.encode(signatureNonce, "UTF-8")
+
+
+
+
+
+
+
+            val encodedAccessKeyId = java.net.URLEncoder.encode(aliyunAccessKeyId, "UTF-8")
+
+
+
+
+
+
+
+            val encodedSignatureMethod = java.net.URLEncoder.encode(signatureMethod, "UTF-8")
+
+
+
+
+
+
+
+            val encodedSignatureVersion = java.net.URLEncoder.encode(signatureVersion, "UTF-8")
+
+
+
+
+
+
+
+            val encodedQueryParams = "AccessKeyId=$encodedAccessKeyId&Action=SubmitTask&SignatureMethod=$encodedSignatureMethod&SignatureNonce=$encodedSignatureNonce&SignatureVersion=$encodedSignatureVersion&Timestamp=$encodedTimestamp&Version=2018-08-17"
+
+
+
+
+
+
+
+            
+
+
+
+
+
+
+
+            // 手动构建请求体 JSON 字符串，确保 Task 对象的键顺序正确
+
+
+
+
+
+
+
+            val requestBodyStr = buildString {
+
+
+
+
+
+
+
+                append("{\"Task\":").append(taskObjectJson).append("}")
+
+
+
+
+
+
+
+            }
+
+
+
+
+
+
+
+            
+
+
+
+
+
+
+
+            Log.d("AiModelService", "submitAliyunTranscriptionTask requestBody: $requestBodyStr")
+
+
+
+
+
+
+
+            
+
+
+
+
+
+
+
+            // 生成签名（需要合并查询参数和请求体参数）
+
+
+
+
+
+
+
+            // RPC 风格签名使用路径 "/"
+
+
+
+
+
+
+
+            val date = getGMTTime()
+
+
+
+
+
+
+
+            val signature = generateAliyunPopSignatureForRpc(
+
+
+
+
+
+
+
+                method = "POST",
+
+
+
+
+
+
+
+                queryParams = queryParams,
+
+
+
+
+
+
+
+                bodyParams = requestBodyStr
+
+
+
+
+
+
+
+            )
+
+
+
+
+
+
+
+            
+
+
+
+
+
+
+
+            Log.d("AiModelService", "submitAliyunTranscriptionTask date: $date, signature: ${signature.take(20)}...")
+
+
+
+
+
+
+
+            
+
+
+
+
+
+
+
+            // 将 Signature 添加到查询参数中
+
+
+
+
+
+
+
+            val encodedSignature = java.net.URLEncoder.encode(signature, "UTF-8")
+
+
+
+
+
+
+
+            val finalQueryParams = "$encodedQueryParams&Signature=$encodedSignature"
+
+
+
+
+
+
+
+            val url = "https://$aliyunFileTransDomain/trans/file?$finalQueryParams"
+
+
+
+
+
+
+
+            
+
+
+
+
+
+
+
+            Log.d("AiModelService", "submitAliyunTranscriptionTask final url: $url")
+
+
+
+
+
+
+
+            
+
+
+
+
+
+
+
+            val request = Request.Builder()
+
+
+
+
+
+
+
+                .url(url)  // URL 包含所有查询参数，包括 Signature
+
+
+
+
+
+
+
+                .addHeader("Content-Type", "application/json; charset=UTF-8")
+
+
+
+
+
+
+
+                .addHeader("Date", date)
+
+
+
+
+
+
+
+                .post(requestBodyStr.toRequestBody("application/json; charset=UTF-8".toMediaTypeOrNull()))
+
+
+
+
+
+
+
+                .build()
+
+
+
+
+
+
+
+            
+
+
+
+
+
+
+
+            val response = executeWithRetry(request)
+
+
+
+
+
+
+
+            val responseBody = response.body?.string().orEmpty()
+
+
+
+
+
+
+
+            
+
+
+
+
+
+
+
+            Log.d("AiModelService", "submitAliyunTranscriptionTask responseCode=${response.code}, body=$responseBody")
+
+
+
+
+
+
+
+            
+
+
+
+
+
+
+
+            if (!response.isSuccessful) {
+
+
+
+
+
+
+
+                // 尝试解析XML错误响应
+
+
+
+
+
+
+
+                if (responseBody.contains("<Error>")) {
+
+
+
+
+
+
+
+                    val errorMsg = extractXmlError(responseBody)
+
+
+
+
+
+
+
+                    return@withContext Result.failure(Exception("提交识别任务失败: $errorMsg"))
+
+
+
+
+
+
+
+                }
+
+
+
+
+
+
+
+                return@withContext Result.failure(Exception("提交识别任务失败: HTTP ${response.code} $responseBody"))
+
+
+
+
+
+
+
+            }
+
+
+
+
+
+
+
+            
+
+
+
+
+
+
+
+            // 解析响应（可能是 XML 或 JSON 格式）
+
+
+
+
+
+
+
+            if (responseBody.trimStart().startsWith("<?xml") || responseBody.trimStart().startsWith("<")) {
+
+
+
+
+
+
+
+                // XML 格式响应
+
+
+
+
+
+
+
+                val taskIdMatch = Regex("<TaskId>(.*?)</TaskId>").find(responseBody)
+
+
+
+
+
+
+
+                val statusCodeMatch = Regex("<StatusCode>(.*?)</StatusCode>").find(responseBody)
+
+
+
+
+
+
+
+                val statusTextMatch = Regex("<StatusText>(.*?)</StatusText>").find(responseBody)
+
+
+
+
+
+
+
+                
+
+
+
+
+
+
+
+                val statusCode = statusCodeMatch?.groupValues?.get(1)?.toIntOrNull() ?: -1
+
+
+
+
+
+
+
+                val statusText = statusTextMatch?.groupValues?.get(1) ?: "未知错误"
+
+
+
+
+
+
+
+                
+
+
+
+
+
+
+
+                if (statusCode == 21050000) {
+
+
+
+
+
+
+
+                    val taskId = taskIdMatch?.groupValues?.get(1) ?: ""
+
+
+
+
+
+
+
+                    if (taskId.isNotBlank()) {
+
+
+
+
+
+
+
+                        Log.d("AiModelService", "submitAliyunTranscriptionTask success, TaskId: $taskId")
+
+
+
+
+
+
+
+                        Result.success(taskId)
+
+
+
+
+
+
+
+                    } else {
+
+
+
+
+
+
+
+                        Result.failure(Exception("返回的TaskId为空"))
+
+
+
+
+
+
+
+                    }
+
+
+
+
+
+
+
+                } else {
+
+
+
+
+
+
+
+                    Result.failure(Exception("提交任务失败: $statusText (code=$statusCode)"))
+
+
+
+
+
+
+
+                }
+
+
+
+
+
+
+
+            } else {
+
+
+
+
+
+
+
+                // JSON 格式响应（兼容 2.0 和 4.0 版本）
+
+
+
+
+
+
+
+                val json = JSONObject(responseBody)
+
+
+
+
+
+
+
+                val statusCode = json.optInt("StatusCode", json.optInt("status_code", -1))
+
+
+
+
+
+
+
+                if (statusCode == 21050000) {
+
+
+
+
+
+
+
+                    // 兼容 TaskId 和 task_id 字段名
+
+
+
+
+
+
+
+                    val taskId = json.optString("TaskId", json.optString("task_id", ""))
+
+
+
+
+
+
+
+                    if (taskId.isNotBlank()) {
+
+
+
+
+
+
+
+                        Log.d("AiModelService", "submitAliyunTranscriptionTask success, TaskId: $taskId")
+
+
+
+
+
+
+
+                        Result.success(taskId)
+
+
+
+
+
+
+
+                    } else {
+
+
+
+
+
+
+
+                        Result.failure(Exception("返回的TaskId为空"))
+
+
+
+
+
+
+
+                    }
+
+
+
+
+
+
+
+                } else {
+
+
+
+
+
+
+
+                    val statusText = json.optString("StatusText", json.optString("status_text", "未知错误"))
+
+
+
+
+
+
+
+                    Result.failure(Exception("提交任务失败: $statusText (code=$statusCode)"))
+
+
+
+
+
+
+
+                }
+
+
+
+
+
+
+
+            }
+
+
+
+
+
+
+
+        } catch (e: Exception) {
+
+
+
+
+
+
+
+            Log.e("AiModelService", "submitAliyunTranscriptionTask error: ${e.message}", e)
+
+
+
+
+
+
+
+            Result.failure(e)
+
+
+
+
+
+
+
+        }
+
+
+
+
+
+
+
+    }
+
+
+
+
+
+
+
+    
+
+
+
+
+
+
+
+    /**
+
+
+
+
+
+
+
+     * 从XML错误响应中提取错误信息
+
+
+
+
+
+
+
+     */
+
+
+
+
+
+
+
+    private fun extractXmlError(xml: String): String {
+
+
+
+
+
+
+
+        return try {
+
+
+
+
+
+
+
+            val codeMatch = Regex("<Code>(.*?)</Code>").find(xml)
+
+
+
+
+
+
+
+            val messageMatch = Regex("<Message>(.*?)</Message>").find(xml)
+
+
+
+
+
+
+
+            val code = codeMatch?.groupValues?.get(1) ?: "未知错误"
+
+
+
+
+
+
+
+            val message = messageMatch?.groupValues?.get(1) ?: ""
+
+
+
+
+
+
+
+            "$code: $message"
+
+
+
+
+
+
+
+        } catch (e: Exception) {
+
+
+
+
+
+
+
+            "解析错误信息失败"
+
+
+
+
+
+
+
+        }
+
+
+
+
+
+
+
+    }
+
+
+
+
+
+
+
+    
+
+
+
+
+
+
+
+    /**
+
+
+
+
+
+
+
+     * 轮询阿里云录音文件识别结果
+
+
+
+
+
+
+
+     */
+
+
+
+
+
+
+
+    private suspend fun pollAliyunTranscriptionResult(taskId: String): Result<String> = withContext(Dispatchers.IO) {
+
+
+
+
+
+
+
+        var retryCount = 0
+
+
+
+
+
+
+
+        val maxRetries = 60 // 最多轮询60次（约5分钟）
+
+
+
+
+
+
+
+        
+
+
+
+
+
+
+
+        while (retryCount < maxRetries) {
+
+
+
+
+
+
+
+            try {
+
+
+
+
+
+
+
+                delay(5000) // 每5秒查询一次
+
+
+
+
+
+
+
+                
+
+
+
+
+
+
+
+                // 生成时间戳和随机数
+
+
+
+
+
+
+
+                val timestamp = getISOTimestamp()
+
+
+
+
+
+
+
+                val signatureNonce = java.util.UUID.randomUUID().toString().replace("-", "")
+
+
+
+
+
+
+
+                val signatureMethod = "HMAC-SHA1"
+
+
+
+
+
+
+
+                val signatureVersion = "1.0"
+
+
+
+
+
+
+
+                
+
+
+
+
+
+
+
+                // 构造查询参数
+
+
+
+
+
+
+
+                val queryParams = "AccessKeyId=$aliyunAccessKeyId&Action=GetTaskResult&SignatureMethod=$signatureMethod&SignatureNonce=$signatureNonce&SignatureVersion=$signatureVersion&TaskId=$taskId&Timestamp=$timestamp&Version=2018-08-17"
+
+
+
+
+
+
+
+                
+
+
+
+
+
+
+
+                // 生成签名
+
+
+
+
+
+
+
+                val signature = generateAliyunPopSignatureForRpc(
+
+
+
+
+
+
+
+                    method = "GET",
+
+
+
+
+
+
+
+                    queryParams = queryParams,
+
+
+
+
+
+
+
+                    bodyParams = ""
+
+
+
+
+
+
+
+                )
+
+
+
+
+
+
+
+                
+
+
+
+
+
+
+
+                // 构造 URL（包含所有查询参数和签名）
+
+
+
+
+
+
+
+                val encodedTimestamp = java.net.URLEncoder.encode(timestamp, "UTF-8")
+
+
+
+
+
+
+
+                val encodedSignatureNonce = java.net.URLEncoder.encode(signatureNonce, "UTF-8")
+
+
+
+
+
+
+
+                val encodedAccessKeyId = java.net.URLEncoder.encode(aliyunAccessKeyId, "UTF-8")
+
+
+
+
+
+
+
+                val encodedSignatureMethod = java.net.URLEncoder.encode(signatureMethod, "UTF-8")
+
+
+
+
+
+
+
+                val encodedSignatureVersion = java.net.URLEncoder.encode(signatureVersion, "UTF-8")
+
+
+
+
+
+
+
+                val encodedTaskId = java.net.URLEncoder.encode(taskId, "UTF-8")
+
+
+
+
+
+
+
+                val encodedSignature = java.net.URLEncoder.encode(signature, "UTF-8")
+
+
+
+
+
+
+
+                val encodedQueryParams = "AccessKeyId=$encodedAccessKeyId&Action=GetTaskResult&SignatureMethod=$encodedSignatureMethod&SignatureNonce=$encodedSignatureNonce&SignatureVersion=$encodedSignatureVersion&TaskId=$encodedTaskId&Timestamp=$encodedTimestamp&Version=2018-08-17&Signature=$encodedSignature"
+
+
+
+
+
+
+
+                val url = "https://$aliyunFileTransDomain/trans/get?$encodedQueryParams"
+
+
+
+
+
+
+
+                
+
+
+
+
+
+
+
+                val request = Request.Builder()
+
+
+
+
+
+
+
+                    .url(url)
+
+
+
+
+
+
+
+                    .get()
+
+
+
+
+
+
+
+                    .build()
+
+
+
+
+
+
+
+                
+
+
+
+
+
+
+
+                val response = executeWithRetry(request)
+
+
+
+
+
+
+
+                val responseBody = response.body?.string().orEmpty()
+
+
+
+
+
+
+
+                
+
+
+
+
+
+
+
+                Log.d("AiModelService", "pollAliyunTranscriptionResult responseCode=${response.code}, body=$responseBody")
+
+
+
+
+
+
+
+                
+
+
+
+
+
+
+
+                if (!response.isSuccessful) {
+
+
+
+
+
+
+
+                    retryCount++
+
+
+
+
+
+
+
+                    continue
+
+
+
+
+
+
+
+                }
+
+
+
+
+
+
+
+                
+
+
+
+
+
+
+
+                // 解析响应（可能是 XML 或 JSON 格式）
+
+
+
+
+
+
+
+                val statusCode: Int
+
+
+
+
+
+
+
+                val statusText: String
+
+
+
+
+
+
+
+                
+
+
+
+
+
+
+
+                if (responseBody.trimStart().startsWith("<?xml") || responseBody.trimStart().startsWith("<")) {
+
+
+
+
+
+
+
+                    // XML 格式响应
+
+
+
+
+
+
+
+                    val statusCodeMatch = Regex("<StatusCode>(.*?)</StatusCode>").find(responseBody)
+
+
+
+
+
+
+
+                    val statusTextMatch = Regex("<StatusText>(.*?)</StatusText>").find(responseBody)
+
+
+
+
+
+
+
+                    statusCode = statusCodeMatch?.groupValues?.get(1)?.toIntOrNull() ?: -1
+
+
+
+
+
+
+
+                    statusText = statusTextMatch?.groupValues?.get(1) ?: ""
+
+
+
+
+
+
+
+                    
+
+
+
+
+
+
+
+                    when (statusCode) {
+
+
+
+
+
+
+
+                        21050000 -> { // SUCCESS
+
+
+
+
+
+
+
+                            // 解析 XML 中的识别结果
+
+
+
+
+
+
+
+                            // XML 结构：<Result><Sentences><Sentences>...<Text>...</Text>...</Sentences></Sentences></Result>
+
+
+
+
+
+
+
+                            // 直接查找所有 <Text> 标签并提取文本内容
+
+
+
+
+
+
+
+                            val textList = Regex("<Text>(.*?)</Text>").findAll(responseBody)
+
+
+
+
+
+
+
+                                .map { it.groupValues[1] }
+
+
+
+
+
+
+
+                                .filter { it.isNotBlank() }
+
+
+
+
+
+
+
+                                .toList()
+
+
+
+
+
+
+
+                            if (textList.isNotEmpty()) {
+
+
+
+
+
+
+
+                                return@withContext Result.success(textList.joinToString(" "))
+
+
+
+
+
+
+
+                            }
+
+
+
+
+
+
+
+                        }
+
+
+
+
+
+
+
+                    }
+
+
+
+
+
+
+
+                } else {
+
+
+
+
+
+
+
+                    // JSON 格式响应
+
+
+
+
+
+
+
+                    val json = JSONObject(responseBody)
+
+
+
+
+
+
+
+                    // 兼容 2.0 版本（小写）和 4.0 版本（驼峰）的字段名
+
+
+
+
+
+
+
+                    statusCode = json.optInt("StatusCode", json.optInt("status_code", -1))
+
+
+
+
+
+
+
+                    statusText = json.optString("StatusText", json.optString("status_text", ""))
+
+
+
+
+
+
+
+                    
+
+
+
+
+
+
+
+                    when (statusCode) {
+
+
+
+
+
+
+
+                        21050000 -> { // SUCCESS
+
+
+
+
+
+
+
+                            // 4.0 版本格式：Result.Sentences[]
+
+
+
+
+
+
+
+                            val resultObj = json.optJSONObject("Result") ?: json.optJSONObject("result")
+
+
+
+
+
+
+
+                            val sentences = resultObj?.optJSONArray("Sentences") ?: resultObj?.optJSONArray("sentences")
+
+
+
+
+
+
+
+                            
+
+
+
+
+
+
+
+                            if (sentences != null && sentences.length() > 0) {
+
+
+
+
+
+
+
+                                val textList = mutableListOf<String>()
+
+
+
+
+
+
+
+                                for (i in 0 until sentences.length()) {
+
+
+
+
+
+
+
+                                    val sentence = sentences.getJSONObject(i)
+
+
+
+
+
+
+
+                                    // 兼容 Text 和 text 字段名
+
+
+
+
+
+
+
+                                    val text = sentence.optString("Text", sentence.optString("text", ""))
+
+
+
+
+
+
+
+                                    if (text.isNotBlank()) {
+
+
+
+
+
+
+
+                                        textList.add(text)
+
+
+
+
+
+
+
+                                    }
+
+
+
+
+
+
+
+                                }
+
+
+
+
+
+
+
+                                if (textList.isNotEmpty()) {
+
+
+
+
+
+
+
+                                    return@withContext Result.success(textList.joinToString(" "))
+
+
+
+
+
+
+
+                                }
+
+
+
+
+
+
+
+                            }
+
+
+
+
+
+
+
+                            
+
+
+
+
+
+
+
+                            // 2.0 版本格式：result[] (直接是数组)
+
+
+
+
+
+
+
+                            val resultArray = json.optJSONArray("result")
+
+
+
+
+
+
+
+                            if (resultArray != null && resultArray.length() > 0) {
+
+
+
+
+
+
+
+                                val textList = mutableListOf<String>()
+
+
+
+
+
+
+
+                                for (i in 0 until resultArray.length()) {
+
+
+
+
+
+
+
+                                    val sentence = resultArray.getJSONObject(i)
+
+
+
+
+
+
+
+                                    val text = sentence.optString("text", sentence.optString("Text", ""))
+
+
+
+
+
+
+
+                                    if (text.isNotBlank()) {
+
+
+
+
+
+
+
+                                        textList.add(text)
+
+
+
+
+
+
+
+                                    }
+
+
+
+
+
+
+
+                                }
+
+
+
+
+
+
+
+                                if (textList.isNotEmpty()) {
+
+
+
+
+
+
+
+                                    return@withContext Result.success(textList.joinToString(" "))
+
+
+
+
+
+
+
+                                }
+
+
+
+
+
+
+
+                            }
+
+
+
+
+
+
+
+                        }
+
+
+
+
+
+
+
+                    }
+
+
+
+
+
+
+
+                }
+
+
+
+
+
+
+
+                
+
+
+
+
+
+
+
+                // 如果状态码是 SUCCESS 但没有识别结果
+
+
+
+
+
+
+
+                if (statusCode == 21050000) {
+
+
+
+
+
+
+
+                    return@withContext Result.failure(Exception("识别结果为空"))
+
+
+
+
+
+
+
+                }
+
+
+
+
+
+
+
+                
+
+
+
+
+
+
+
+                when (statusCode) {
+
+
+
+
+
+
+
+                    21050001 -> { // RUNNING
+
+
+
+
+
+
+
+                        retryCount++
+
+
+
+
+
+
+
+                        continue
+
+
+
+
+
+
+
+                    }
+
+
+
+
+
+
+
+                    21050002 -> { // QUEUEING
+
+
+
+
+
+
+
+                        retryCount++
+
+
+
+
+
+
+
+                        continue
+
+
+
+
+
+
+
+                    }
+
+
+
+
+
+
+
+                    40270003 -> { // DECODE_ERROR - 音频解码失败
+
+
+
+
+
+
+
+                        return@withContext Result.failure(Exception("音频格式不支持或文件损坏，请确保音频为 WAV (PCM 16bit, 16kHz, 单声道) 或 MP3 (16kHz, 单声道, 64kbps) 格式"))
+
+
+
+
+
+
+
+                    }
+
+
+
+
+
+
+
+                    41050002 -> { // FILE_DOWNLOAD_FAILED - 文件下载失败
+
+
+
+
+
+
+
+                        return@withContext Result.failure(Exception("无法下载音频文件，请检查文件 URL 是否可公开访问"))
+
+
+
+
+
+
+
+                    }
+
+
+
+
+
+
+
+                    else -> {
+
+
+
+
+
+
+
+                        return@withContext Result.failure(Exception("识别失败: $statusText (code=$statusCode)"))
+
+
+
+
+
+
+
+                    }
+
+
+
+
+
+
+
+                }
+
+
+
+
+
+
+
+            } catch (e: Exception) {
+
+
+
+
+
+
+
+                Log.w("AiModelService", "pollAliyunTranscriptionResult error: ${e.message}", e)
+
+
+
+
+
+
+
+                retryCount++
+
+
+
+
+
+
+
+                if (retryCount >= maxRetries) {
+
+
+
+
+
+
+
+                    return@withContext Result.failure(e)
+
+
+
+
+
+
+
+                }
+
+
+
+
+
+
+
+            }
+
+
+
+
+
+
+
+        }
+
+
+
+
+
+
+
+        
+
+
+
+
+
+
+
+        Result.failure(Exception("识别超时，请稍后重试"))
+
+
+
+
+
+
+
+    }
+
+
+
+
+
+
+
+    
+
+
+
+
+
+
+
+    /**
+
+
+
+
+
+
+
+     * 生成阿里云POP API RPC风格签名
+
+
+
+
+
+
+
+     * 格式：Method&URL编码的路径("/")&URL编码的所有参数（查询参数+请求体参数，按字典序排序）
+
+
+
+
+
+
+
+     */
+
+
+
+
+
+
+
+    private fun generateAliyunPopSignatureForRpc(
+
+
+
+
+
+
+
+        method: String,
+
+
+
+
+
+
+
+        queryParams: String,
+
+
+
+
+
+
+
+        bodyParams: String
+
+
+
+
+
+
+
+    ): String {
+
+
+
+
+
+
+
+        try {
+
+
+
+
+
+
+
+            // 解析查询参数（queryParams 已经是未编码的原始字符串）
+
+
+
+
+
+
+
+            val params = mutableMapOf<String, String>()
+
+
+
+
+
+
+
+            queryParams.split("&").forEach { param ->
+
+
+
+
+
+
+
+                val parts = param.split("=", limit = 2)
+
+
+
+
+
+
+
+                if (parts.size == 2) {
+
+
+
+
+
+
+
+                    params[parts[0]] = parts[1]  // 直接使用，不解码
+
+
+
+
+
+
+
+                }
+
+
+
+
+
+
+
+            }
+
+
+
+
+
+
+
+            
+
+
+
+
+
+
+
+            // 解析请求体参数（JSON格式）
+
+
+
+
+
+
+
+            // 注意：嵌套的 JSON 对象（如 Task）应该作为整个 JSON 字符串，而不是展开
+
+
+
+
+
+
+
+            // 重要：需要手动构造 JSON 字符串，避免 JSONObject.toString() 的转义问题
+
+
+
+
+
+
+
+            // 特别处理：如果 bodyParams 包含 "Task" 键，直接从字符串中提取 Task 的值，保持原始顺序
+
+
+
+
+
+
+
+            if (bodyParams.isNotBlank()) {
+
+
+
+
+
+
+
+                try {
+
+
+
+
+
+
+
+                    // 尝试直接从字符串中提取 Task 的值（保持原始 JSON 字符串顺序）
+
+
+
+
+
+
+
+                    // 使用更准确的正则表达式，匹配完整的 JSON 对象（包括嵌套的大括号）
+
+
+
+
+
+
+
+                    val taskMatch = Regex("\"Task\"\\s*:\\s*(\\{[^}]*\\})").find(bodyParams)
+
+
+
+
+
+
+
+                    if (taskMatch != null) {
+
+
+
+
+
+
+
+                        // 找到了 Task 对象，直接使用原始 JSON 字符串（不重新解析）
+
+
+
+
+
+
+
+                        val taskJson = taskMatch.groupValues[1]
+
+
+
+
+
+
+
+                        params["Task"] = taskJson
+
+
+
+
+
+
+
+                    } else {
+
+
+
+
+
+
+
+                        // 如果没有找到，使用原来的解析方式
+
+
+
+
+
+
+
+                        val json = JSONObject(bodyParams)
+
+
+
+
+
+
+
+                        json.keys().forEach { key ->
+
+
+
+
+
+
+
+                            val value = json.get(key)
+
+
+
+
+
+
+
+                            when (value) {
+
+
+
+
+
+
+
+                                is JSONObject -> {
+
+
+
+
+
+
+
+                                    // 如果是嵌套的 JSON 对象（如 Task），手动构造 JSON 字符串，避免转义
+
+
+
+
+
+
+
+                                    // 重要：必须按字典序排序键，且布尔值不能加引号
+
+
+
+
+
+
+
+                                    val nestedJson = value as JSONObject
+
+
+
+
+
+
+
+                                    val jsonString = buildString {
+
+
+
+
+
+
+
+                                        append("{")
+
+
+
+
+
+
+
+                                        val keys = nestedJson.keys().asSequence().sorted().toList()
+
+
+
+
+
+
+
+                                        keys.forEachIndexed { index, nestedKey ->
+
+
+
+
+
+
+
+                                            if (index > 0) append(",")
+
+
+
+
+
+
+
+                                            append("\"").append(nestedKey).append("\":")
+
+
+
+
+
+
+
+                                            val nestedValue = nestedJson.get(nestedKey)
+
+
+
+
+
+
+
+                                            when (nestedValue) {
+
+
+
+
+
+
+
+                                                is String -> append("\"").append(nestedValue).append("\"")
+
+
+
+
+
+
+
+                                                is Boolean -> append(nestedValue.toString())  // 布尔值不加引号
+
+
+
+
+
+
+
+                                                is Number -> append(nestedValue.toString())
+
+
+
+
+
+
+
+                                                else -> append(nestedValue.toString())
+
+
+
+
+
+
+
+                                            }
+
+
+
+
+
+
+
+                                        }
+
+
+
+
+
+
+
+                                        append("}")
+
+
+
+
+
+
+
+                                    }
+
+
+
+
+
+
+
+                                    params[key] = jsonString
+
+
+
+
+
+
+
+                                }
+
+
+
+
+
+
+
+                                else -> {
+
+
+
+
+
+
+
+                                    params[key] = value.toString()
+
+
+
+
+
+
+
+                                }
+
+
+
+
+
+
+
+                            }
+
+
+
+
+
+
+
+                        }
+
+
+
+
+
+
+
+                    }
+
+
+
+
+
+
+
+                } catch (e: Exception) {
+
+
+
+
+
+
+
+                    Log.w("AiModelService", "Failed to parse body params: ${e.message}")
+
+
+
+
+
+
+
+                }
+
+
+
+
+
+
+
+            }
+
+
+
+
+
+
+
+            
+
+
+
+
+
+
+
+            // 按字典序排序参数
+
+
+
+
+
+
+
+            val sortedParams = params.entries.sortedBy { it.key }
+
+
+
+
+
+
+
+            
+
+
+
+
+
+
+
+            // 构造参数字符串（key=value&key=value格式）
+
+
+
+
+
+
+
+            // 注意：需要对每个参数值进行 URL 编码
+
+
+
+
+
+
+
+            val paramString = sortedParams.joinToString("&") { (key, value) ->
+
+
+
+
+
+
+
+                val encodedKey = java.net.URLEncoder.encode(key, "UTF-8")
+
+
+
+
+
+
+
+                val encodedValue = java.net.URLEncoder.encode(value, "UTF-8")
+
+
+
+
+
+
+
+                "$encodedKey=$encodedValue"
+
+
+
+
+
+
+
+            }
+
+
+
+
+
+
+
+            
+
+
+
+
+
+
+
+            // URL 编码路径（RPC风格使用 "/"）和整个参数字符串（双重编码）
+
+
+
+
+
+
+
+            val encodedPath = java.net.URLEncoder.encode("/", "UTF-8")
+
+
+
+
+
+
+
+            val encodedParams = java.net.URLEncoder.encode(paramString, "UTF-8")
+
+
+
+
+
+
+
+            
+
+
+
+
+
+
+
+            // 构造签名字符串：Method&URL编码的路径&URL编码的参数
+
+
+
+
+
+
+
+            val stringToSign = "$method&$encodedPath&$encodedParams"
+
+
+
+
+
+
+
+            
+
+
+
+
+
+
+
+            Log.d("AiModelService", "RPC StringToSign: $stringToSign")
+
+
+
+
+
+
+
+            
+
+
+
+
+
+
+
+            // 使用HMAC-SHA1签名（注意：RPC风格需要在SecretKey后加&）
+
+
+
+
+
+
+
+            val mac = Mac.getInstance("HmacSHA1")
+
+
+
+
+
+
+
+            val secretKey = SecretKeySpec("$aliyunAccessKeySecret&".toByteArray(Charsets.UTF_8), "HmacSHA1")
+
+
+
+
+
+
+
+            mac.init(secretKey)
+
+
+
+
+
+
+
+            val signatureBytes = mac.doFinal(stringToSign.toByteArray(Charsets.UTF_8))
+
+
+
+
+
+
+
+            val signature = Base64.encodeToString(signatureBytes, Base64.NO_WRAP)
+
+
+
+
+
+
+
+            
+
+
+
+
+
+
+
+            Log.d("AiModelService", "RPC Signature generated")
+
+
+
+
+
+
+
+            return signature
+
+
+
+
+
+
+
+        } catch (e: Exception) {
+
+
+
+
+
+
+
+            Log.e("AiModelService", "generateAliyunPopSignatureForRpc error: ${e.message}", e)
+
+
+
+
+
+
+
+            throw e
+
+
+
+
+
+
+
+        }
+
+
+
+
+
+
+
+    }
+
+
+
+
+
+
+
+    
+
+
+
+
+
+
+
+    /**
+
+
+
+
+
+
+
+     * 生成阿里云POP API签名
+
+
+
+
+
+
+
+     * 根据阿里云POP API签名规范：StringToSign = Method + "\n" + Accept + "\n" + Content-MD5 + "\n" + Content-Type + "\n" + Date + "\n" + CanonicalizedHeaders + "\n" + CanonicalizedResource
+
+
+
+
+
+
+
+     */
+
+
+
+
+
+
+
+    private fun generateAliyunPopSignature(
+
+
+
+
+
+
+
+        method: String, 
+
+
+
+
+
+
+
+        resource: String, 
+
+
+
+
+
+
+
+        date: String, 
+
+
+
+
+
+
+
+        body: String,
+
+
+
+
+
+
+
+        acsHeaders: Map<String, String> = emptyMap()
+
+
+
+
+
+
+
+    ): String {
+
+
+
+
+
+
+
+        try {
+
+
+
+
+
+
+
+            // 计算Content-MD5（如果有body则计算，否则为空）
+
+
+
+
+
+
+
+            val bodyMd5 = if (body.isNotBlank()) {
+
+
+
+
+
+
+
+                val md5 = MessageDigest.getInstance("MD5")
+
+
+
+
+
+
+
+                val bodyBytes = body.toByteArray(Charsets.UTF_8)
+
+
+
+
+
+
+
+                Base64.encodeToString(md5.digest(bodyBytes), Base64.NO_WRAP)
+
+
+
+
+
+
+
+            } else {
+
+
+
+
+
+
+
+                ""
+
+
+
+
+
+
+
+            }
+
+
+
+
+
+
+
+            
+
+
+
+
+
+
+
+            // 确定Content-Type
+
+
+
+
+
+
+
+            val contentType = if (method == "POST" && body.isNotBlank()) {
+
+
+
+
+
+
+
+                "application/json; charset=UTF-8"
+
+
+
+
+
+
+
+            } else {
+
+
+
+
+
+
+
+                ""
+
+
+
+
+
+
+
+            }
+
+
+
+
+
+
+
+            
+
+
+
+
+
+
+
+            // 构造 CanonicalizedHeaders（所有 x-acs- 开头的头信息，按字典序排列）
+
+
+
+
+
+
+
+            val canonicalizedHeaders = if (acsHeaders.isNotEmpty()) {
+
+
+
+
+
+
+
+                acsHeaders.entries
+
+
+
+
+
+
+
+                    .sortedBy { it.key.lowercase() }
+
+
+
+
+
+
+
+                    .joinToString("\n") { "${it.key.lowercase()}:${it.value}" }
+
+
+
+
+
+
+
+            } else {
+
+
+
+
+
+
+
+                ""
+
+
+
+
+
+
+
+            }
+
+
+
+
+
+
+
+            
+
+
+
+
+
+
+
+            // 构造签名字符串
+
+
+
+
+
+
+
+            // 标准格式：Method + "\n" + Accept + "\n" + Content-MD5 + "\n" + Content-Type + "\n" + Date + "\n" + CanonicalizedHeaders + "\n" + CanonicalizedResource
+
+
+
+
+
+
+
+            val stringToSign = buildString {
+
+
+
+
+
+
+
+                append(method).append("\n")
+
+
+
+
+
+
+
+                append("*/*").append("\n")  // Accept
+
+
+
+
+
+
+
+                append(bodyMd5).append("\n")
+
+
+
+
+
+
+
+                append(contentType).append("\n")
+
+
+
+
+
+
+
+                append(date).append("\n")
+
+
+
+
+
+
+
+                append(canonicalizedHeaders).append("\n")  // CanonicalizedHeaders
+
+
+
+
+
+
+
+                append(resource)
+
+
+
+
+
+
+
+            }
+
+
+
+
+
+
+
+            
+
+
+
+
+
+
+
+            Log.d("AiModelService", "StringToSign: $stringToSign")
+
+
+
+
+
+
+
+            Log.d("AiModelService", "BodyMD5: $bodyMd5, ContentType: $contentType")
+
+
+
+
+
+
+
+            
+
+
+
+
+
+
+
+            // 使用HMAC-SHA1签名
+
+
+
+
+
+
+
+            val mac = Mac.getInstance("HmacSHA1")
+
+
+
+
+
+
+
+            val secretKey = SecretKeySpec(aliyunAccessKeySecret.toByteArray(Charsets.UTF_8), "HmacSHA1")
+
+
+
+
+
+
+
+            mac.init(secretKey)
+
+
+
+
+
+
+
+            val signatureBytes = mac.doFinal(stringToSign.toByteArray(Charsets.UTF_8))
+
+
+
+
+
+
+
+            val signature = Base64.encodeToString(signatureBytes, Base64.NO_WRAP)
+
+
+
+
+
+
+
+            
+
+
+
+
+
+
+
+            Log.d("AiModelService", "Signature generated for $method $resource")
+
+
+
+
+
+
+
+            return signature
+
+
+
+
+
+
+
+        } catch (e: Exception) {
+
+
+
+
+
+
+
+            Log.e("AiModelService", "generateAliyunPopSignature error: ${e.message}", e)
+
+
+
+
+
+
+
+            throw e
+
+
+
+
+
+
+
+        }
+
+
+
+
+
+
+
+    }
+
+
+
+
+
+
+
+    
+
+
+
+
+
+
+
+    /**
+
+
+
+
+
+
+
+     * 获取GMT时间字符串（RFC1123格式）
+
+
+
+
+
+
+
+     */
+
+
+
+
+
+
+
+    private fun getGMTTime(): String {
+
+
+
+
+
+
+
+        val sdf = SimpleDateFormat("EEE, dd MMM yyyy HH:mm:ss z", Locale.US)
+
+
+
+
+
+
+
+        sdf.timeZone = TimeZone.getTimeZone("GMT")
+
+
+
+
+
+
+
+        return sdf.format(Date())
+
+
+
+
+
+
+
+    }
+
+
+
+
+
+
+
+    
+
+
+
+
+
+
+
+    /**
+
+
+
+
+
+
+
+     * 获取ISO 8601格式的时间戳（用于Timestamp参数）
+
+
+
+
+
+
+
+     */
+
+
+
+
+
+
+
+    private fun getISOTimestamp(): String {
+
+
+
+
+
+
+
+        val sdf = SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss'Z'", Locale.US)
+
+
+
+
+
+
+
+        sdf.timeZone = TimeZone.getTimeZone("GMT")
+
+
+
+
+
+
+
+        return sdf.format(Date())
+
+
+
+
+
+
+
+    }
+
+
+
+
+
+
+
+}
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+/**
+
+
+
+
+
+
+
+ * 知识提纲数据类
+
+
+
+
+
+
+
+ */
+
+
+
+
+
+
+
+data class KnowledgeOutline(
+
+
+
+
+
+
+
+    val summary: String,
+
+
+
+
+
+
+
+    val structuredOutline: List<OutlineSection>,
+
+
+
+
+
+
+
+    val keyPoints: List<String>,
+
+
+
+
+
+
+
+    val mindMapBranches: List<MindMapBranch>,
+
+
+
+
+
+
+
+    val chapterLinks: List<ChapterLink>
+
+
+
+
+
+
+
+)
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+data class OutlineSection(
+
+
+
+
+
+
+
+    val title: String,
+
+
+
+
+
+
+
+    val bulletPoints: List<String>
+
+
+
+
+
+
+
+)
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+data class MindMapBranch(
+
+
+
+
+
+
+
+    val title: String,
+
+
+
+
+
+
+
+    val nodes: List<String>
+
+
+
+
+
+
+
+)
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+data class ChapterLink(
+
+
+
+
+
+
+
+    val courseName: String,
+
+
+
+
+
+
+
+    val chapterLabel: String,
+
+
+
+
+
+
+
+    val reason: String
+
+
+
+
+
+
+
+)
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+data class AssignmentHintResponse(
+
+
+
+
+
+
+
+    val relatedConcepts: List<String>,
+
+
+
+
+
+
+
+    val formulas: List<String>,
+
+
+
+
+
+
+
+    val solutionSteps: List<String>,
+
+
+
+
+
+
+
+    val chapterLinks: List<ChapterLink>,
+
+
+
+
+
+
+
+    val relatedDiscussions: List<String>
+
+
+
+
+
+
+
+)
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

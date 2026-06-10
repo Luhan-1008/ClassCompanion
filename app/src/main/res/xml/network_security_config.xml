@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="utf-8"?>
+<network-security-config>
+    <!-- 允许模拟器访问本地服务器 -->
+    <domain-config cleartextTrafficPermitted="true">
+        <domain includeSubdomains="true">10.0.2.2</domain>
+    </domain-config>
+    
+    <!-- 允许真机访问本地服务器（需要替换为实际IP地址） -->
+    <!-- 示例：如果你的电脑IP是192.168.1.100，取消下面的注释并修改IP -->
+    <!--
+    <domain-config cleartextTrafficPermitted="true">
+        <domain includeSubdomains="true">192.168.1.100</domain>
+    </domain-config>
+    -->
+    
+    <!-- 开发环境：允许所有HTTP连接（仅用于开发测试） -->
+    <base-config cleartextTrafficPermitted="true">
+        <trust-anchors>
+            <certificates src="system" />
+        </trust-anchors>
+    </base-config>
+</network-security-config>

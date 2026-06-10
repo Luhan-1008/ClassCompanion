@@ -1,0 +1,35 @@
+# Gradle / Kotlin
+.gradle/
+.kotlin/
+**/build/
+
+# Android
+local.properties
+captures/
+*.apk
+*.aab
+
+# IDE
+.idea/
+.vscode/
+backend/.idea/
+idea/
+
+# Logs / crash reports
+*.log
+hs_err_pid*
+replay_pid*
+debug.log
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Temp / misc
+qc
+query
+
+# Secrets / env
+.env
+*.keystore
+*.jks

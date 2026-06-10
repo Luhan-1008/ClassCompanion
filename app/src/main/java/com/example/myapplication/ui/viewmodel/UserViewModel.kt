@@ -1,0 +1,235 @@
+package com.example.myapplication.ui.viewmodel
+
+import androidx.lifecycle.ViewModel
+import androidx.lifecycle.ViewModelProvider
+import androidx.lifecycle.viewModelScope
+import com.example.myapplication.data.model.User
+import com.example.myapplication.data.repository.UserRepository
+import com.example.myapplication.data.repository.RemoteUserRepository
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.launch
+import com.example.myapplication.session.CurrentSession
+
+sealed class AuthResult {
+    object Success : AuthResult()
+    data class Error(val message: String) : AuthResult()
+}
+
+class UserViewModel(
+    private val repository: UserRepository,
+    private val remoteRepository: RemoteUserRepository? = null,
+    private val tokenManager: com.example.myapplication.session.TokenManager
+) : ViewModel() {
+    private val _currentUser = MutableStateFlow<User?>(null)
+    val currentUser: StateFlow<User?> = _currentUser.asStateFlow()
+    
+    private val _allUsers = MutableStateFlow<List<User>>(emptyList())
+    val allUsers: StateFlow<List<User>> = _allUsers.asStateFlow()
+
+    private val _loginResult = MutableStateFlow<AuthResult?>(null)
+    val loginResult: StateFlow<AuthResult?> = _loginResult.asStateFlow()
+    
+    private val _registerResult = MutableStateFlow<AuthResult?>(null)
+    val registerResult: StateFlow<AuthResult?> = _registerResult.asStateFlow()
+    
+    private val _updateResult = MutableStateFlow<AuthResult?>(null)
+    val updateResult: StateFlow<AuthResult?> = _updateResult.asStateFlow()
+    
+    fun login(studentId: String, username: String, password: String) {
+        viewModelScope.launch {
+            try {
+                if (remoteRepository != null) {
+                    val resp = remoteRepository.login(username, password)
+                    if (resp.token.isNotBlank()) {
+                        CurrentSession.token = resp.token
+                        CurrentSession.userId = resp.userId
+                        tokenManager.saveToken(resp.token)
+                        tokenManager.saveUserId(resp.userId)
+
+                        val remoteUser = remoteRepository.getUserProfile(resp.userId).copy(password = password)
+                        repository.upsertUser(remoteUser)
+                        _currentUser.value = remoteUser
+                        _loginResult.value = AuthResult.Success
+                        return@launch
+                    } else {
+                        _loginResult.value = AuthResult.Error("远端登录失败")
+                        return@launch
+                    }
+                }
+                val user = repository.login(studentId, username, password)
+                if (user != null) {
+                    CurrentSession.userId = user.userId.toLong()
+                    tokenManager.saveUserId(user.userId.toLong())
+                    _currentUser.value = user
+                    _loginResult.value = AuthResult.Success
+                } else {
+                    _loginResult.value = AuthResult.Error("用户名或密码错误")
+                }
+            } catch (e: Exception) {
+                _loginResult.value = AuthResult.Error("登录失败: ${e.message}")
+            }
+        }
+    }
+    
+    fun register(user: User) {
+        viewModelScope.launch {
+            try {
+                if (remoteRepository != null) {
+                    val resp = remoteRepository.register(
+                        username = user.username,
+                        password = user.password,
+                        email = user.email,
+                        realName = user.realName
+                    )
+                    if (resp.success) {
+                        if (resp.userId != null) {
+                            val remoteUser = remoteRepository.getUserProfile(resp.userId).copy(password = user.password)
+                            repository.upsertUser(remoteUser)
+                            CurrentSession.userId = resp.userId
+                            tokenManager.saveUserId(resp.userId)
+                            _currentUser.value = remoteUser
+                        }
+                        _registerResult.value = AuthResult.Success
+                        return@launch
+                    } else {
+                        _registerResult.value = AuthResult.Error(resp.message)
+                        return@launch
+                    }
+                }
+                val exists = repository.usernameExists(user.username)
+                if (exists) {
+                    _registerResult.value = AuthResult.Error("用户名已存在")
+                    return@launch
+                }
+                if (user.email.isNullOrBlank()) {
+                    _registerResult.value = AuthResult.Error("请输入有效邮箱")
+                    return@launch
+                }
+                if (repository.emailExists(user.email)) {
+                    _registerResult.value = AuthResult.Error("该邮箱已绑定其他账号")
+                    return@launch
+                }
+                val userId = repository.register(user)
+                if (userId > 0) {
+                    CurrentSession.userId = userId.toLong()
+                    tokenManager.saveUserId(userId.toLong())
+                    _currentUser.value = user.copy(userId = userId.toInt())
+                    _registerResult.value = AuthResult.Success
+                } else {
+                    _registerResult.value = AuthResult.Error("注册失败")
+                }
+            } catch (e: Exception) {
+                _registerResult.value = AuthResult.Error("注册失败: ${e.message}")
+            }
+        }
+    }
+    
+    fun clearLoginResult() {
+        _loginResult.value = null
+    }
+    
+    fun clearRegisterResult() {
+        _registerResult.value = null
+    }
+    
+    fun clearUpdateResult() {
+        _updateResult.value = null
+    }
+    
+    fun logout() {
+        _currentUser.value = null
+        CurrentSession.userId = null
+        CurrentSession.token = null
+        tokenManager.clearSession()
+    }
+    
+    fun loadCurrentUser() {
+        viewModelScope.launch {
+            val userId = CurrentSession.userIdInt
+            if (userId != null && userId > 0) {
+                if (remoteRepository != null) {
+                    val remoteUser = remoteRepository.getUserProfile(userId.toLong())
+                    val localPassword = repository.getUserById(userId)?.password ?: ""
+                    val mergedUser = remoteUser.copy(password = localPassword)
+                    repository.upsertUser(mergedUser)
+                    _currentUser.value = mergedUser
+                } else {
+                    val user = repository.getUserById(userId)
+                    _currentUser.value = user
+                }
+            }
+        }
+    }
+    
+    fun loadAllUsers() {
+        viewModelScope.launch {
+            try {
+                val users = repository.getAllUsers()
+                _allUsers.value = users
+            } catch (e: Exception) {
+                _allUsers.value = emptyList()
+            }
+        }
+    }
+
+    fun deleteAccount(user: User) {
+        viewModelScope.launch {
+            try {
+                repository.deleteUser(user)
+                logout()
+            } catch (e: Exception) {
+                throw e
+            }
+        }
+    }
+    
+    fun updateUser(user: User) {
+        viewModelScope.launch {
+            try {
+                val currentUser = _currentUser.value
+                if (remoteRepository != null) {
+                    val updated = remoteRepository.updateUserProfile(user)
+                        .copy(password = currentUser?.password ?: user.password)
+                    repository.upsertUser(updated)
+                    _currentUser.value = updated
+                    _updateResult.value = AuthResult.Success
+                    return@launch
+                }
+                if (currentUser != null && currentUser.username != user.username) {
+                    if (repository.usernameExists(user.username)) {
+                        _updateResult.value = AuthResult.Error("用户名已存在")
+                        return@launch
+                    }
+                }
+                if (currentUser != null && currentUser.email != user.email && !user.email.isNullOrBlank()) {
+                    if (repository.emailExists(user.email)) {
+                        _updateResult.value = AuthResult.Error("该邮箱已绑定其他账号")
+                        return@launch
+                    }
+                }
+                
+                repository.updateUser(user)
+                _currentUser.value = user
+                _updateResult.value = AuthResult.Success
+            } catch (e: Exception) {
+                _updateResult.value = AuthResult.Error("更新失败: ${e.message}")
+            }
+        }
+    }
+}
+
+class UserViewModelFactory(
+    private val repository: UserRepository,
+    private val remoteRepository: RemoteUserRepository? = null,
+    private val tokenManager: com.example.myapplication.session.TokenManager
+) : ViewModelProvider.Factory {
+    override fun <T : ViewModel> create(modelClass: Class<T>): T {
+        if (modelClass.isAssignableFrom(UserViewModel::class.java)) {
+            @Suppress("UNCHECKED_CAST")
+            return UserViewModel(repository, remoteRepository, tokenManager) as T
+        }
+        throw IllegalArgumentException("Unknown ViewModel class")
+    }
+}
